@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/pytest_cache_current/
+data/pytest_tmp_current/
+data/pytest_tmp*/
+
+.venv/
+venv/
+.env
+
+data/uploads/
+data/processed/
+data/reports/
+data/profiles/
+models/
