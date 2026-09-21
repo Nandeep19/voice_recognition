@@ -10,7 +10,7 @@ VAD, and cosine similarity scoring.
 Audio File
   → FFmpeg (mono 16 kHz normalization)
   → Silero VAD (neural voice activity detection)
-  → Bandpass Filter (80–7500 Hz) + Pre-emphasis (0.97)
+  → Minimum-speech gate (3 s to enroll, 1 s to identify)
   → ECAPA-TDNN / SpeechBrain (speaker embedding)
   → Multi-segment weighted averaging
   → JSON Profile Storage (centroid + individual embeddings)
@@ -68,6 +68,8 @@ Key settings:
 | `IDENTIFICATION_MIN_MARGIN`    | `0.05`  | Required gap between top two candidates  |
 | `VAD_THRESHOLD`                | `0.35`  | Silero speech probability threshold      |
 | `SIGMOID_STEEPNESS`            | `15.0`  | Confidence curve sharpness               |
+| `MIN_SPEECH_MS`                | `1000`  | Minimum speech to identify a clip        |
+| `ENROLLMENT_MIN_SPEECH_MS`     | `3000`  | Minimum speech to accept an enrollment   |
 
 ## Run the Server
 
@@ -75,7 +77,9 @@ Key settings:
 uvicorn app.main:app --reload
 ```
 
-Open **http://127.0.0.1:8000/docs** for interactive Swagger documentation.
+Open **http://127.0.0.1:8000/docs** for interactive Swagger documentation, or
+**http://127.0.0.1:8000/ui** for the browser test console (enroll speakers,
+identify clips, and run an accuracy bench against your own recordings).
 
 > **First request** downloads the ECAPA-TDNN model (~80 MB) and Silero VAD
 > (~2 MB).  This takes 1–3 minutes.  Subsequent requests are fast.
@@ -89,7 +93,7 @@ Open **http://127.0.0.1:8000/docs** for interactive Swagger documentation.
 curl -X POST http://127.0.0.1:8000/speakers -F "name=Alice" -F "file=@alice.wav"
 
 # Add more samples to improve accuracy
-curl -X POST http://127.0.0.1:8000/speakers/spk_alice/enroll -F "file=@alice2.wav"
+curl -X POST http://127.0.0.1:8000/speakers/spk_alice/add-embedding -F "file=@alice2.wav"
 
 # List all enrolled speakers
 curl http://127.0.0.1:8000/speakers
@@ -212,7 +216,7 @@ voicr_recogisation/
 │   ├── main.py          # FastAPI endpoints
 │   ├── pipeline.py      # Core orchestration (analyze, identify, enroll)
 │   ├── vad.py           # Silero VAD integration
-│   ├── audio.py         # FFmpeg, bandpass filter, pre-emphasis
+│   ├── audio.py         # FFmpeg normalization and WAV loading
 │   ├── models.py        # ECAPA-TDNN embedding (single + multi-segment)
 │   ├── scoring.py       # Cosine similarity, sigmoid confidence, top-N
 │   ├── storage.py       # JSON speaker profile CRUD

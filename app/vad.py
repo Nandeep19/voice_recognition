@@ -30,8 +30,10 @@ def _get_vad():
     if _vad_model is None:
         with _vad_lock:
             if _vad_model is None:
+                # Pinned: silero-vad master imports onnxruntime at module load,
+                # which this project does not depend on (it uses the JIT model).
                 model, utils = torch.hub.load(
-                    repo_or_dir="snakers4/silero-vad",
+                    repo_or_dir="snakers4/silero-vad:v5.1.2",
                     model="silero_vad",
                     force_reload=False,
                     trust_repo=True,

@@ -84,7 +84,10 @@ class VoicePipeline:
             )
 
             if speech.size == 0:
-                raise ValueError(f"No speech detected in {safe_name}")
+                raise ValueError(
+                    f"{safe_name}: not enough usable speech — at least "
+                    f"{self.settings.min_speech_ms / 1000:.1f}s of clear speech is required"
+                )
 
             # Save extracted speech for debugging
             speech_path = processed_dir / f"{clip_id}_speech.wav"
@@ -189,7 +192,9 @@ class VoicePipeline:
             )
 
         # Process the query audio
-        embedding, audio_duration, speech_duration = await self._process_single_clip(file)
+        embedding, audio_duration, speech_duration = await self._process_single_clip(
+            file, self.settings.min_speech_ms
+        )
 
         # Match against all profiles
         matches = match_against_profiles(
@@ -239,7 +244,9 @@ class VoicePipeline:
         speaker_id: str | None = None,
     ) -> dict:
         """Enroll a speaker by extracting an embedding from their audio."""
-        embedding, audio_duration, speech_duration = await self._process_single_clip(file)
+        embedding, audio_duration, speech_duration = await self._process_single_clip(
+            file, self.settings.enrollment_min_speech_ms
+        )
 
         profile = enroll_speaker(
             profiles_dir=self.settings.profiles_dir,
@@ -262,7 +269,7 @@ class VoicePipeline:
     # ------------------------------------------------------------------
 
     async def _process_single_clip(
-        self, file: UploadFile
+        self, file: UploadFile, min_speech_ms: int
     ) -> tuple[np.ndarray, float, float]:
         """Process a single uploaded file → (embedding, audio_duration, speech_duration)."""
         temp_id = str(uuid4())[:8]
@@ -273,45 +280,48 @@ class VoicePipeline:
         processed_dir.mkdir(parents=True, exist_ok=True)
 
         source_path = upload_dir / f"{temp_id}_{safe_name}"
-        with source_path.open("wb") as dst:
-            shutil.copyfileobj(file.file, dst)
-
         normalized_path = processed_dir / f"{temp_id}.wav"
-        normalize_audio(source_path, normalized_path)
-        audio, sample_rate = load_audio(normalized_path)
 
-        speech, timestamps, segment_arrays = extract_speech(
-            audio,
-            sample_rate,
-            threshold=self.settings.vad_threshold,
-            min_speech_ms=self.settings.min_speech_ms,
-            min_segment_ms=self.settings.vad_min_segment_ms,
-            pad_ms=self.settings.vad_pad_ms,
-            merge_gap_ms=self.settings.vad_merge_gap_ms,
-        )
-
-        if speech.size == 0:
-            raise ValueError(f"No speech detected in {safe_name}")
-
-        # Multi-segment embedding
-        if segment_arrays:
-            embedding = self.models.embed_segments(
-                segment_arrays, sample_rate, self.settings.vad_min_segment_ms
-            )
-        else:
-            embedding = self.models.embed(speech, sample_rate)
-
-        audio_duration = round(len(audio) / sample_rate, 3)
-        speech_duration = round(len(speech) / sample_rate, 3)
-
-        # Cleanup temp files
         try:
-            source_path.unlink(missing_ok=True)
-            normalized_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+            with source_path.open("wb") as dst:
+                shutil.copyfileobj(file.file, dst)
 
-        return embedding, audio_duration, speech_duration
+            normalize_audio(source_path, normalized_path)
+            audio, sample_rate = load_audio(normalized_path)
+
+            speech, timestamps, segment_arrays = extract_speech(
+                audio,
+                sample_rate,
+                threshold=self.settings.vad_threshold,
+                min_speech_ms=min_speech_ms,
+                min_segment_ms=self.settings.vad_min_segment_ms,
+                pad_ms=self.settings.vad_pad_ms,
+                merge_gap_ms=self.settings.vad_merge_gap_ms,
+            )
+
+            if speech.size == 0:
+                raise ValueError(
+                    f"{safe_name}: not enough usable speech — at least "
+                    f"{min_speech_ms / 1000:.1f}s of clear speech is required"
+                )
+
+            # Multi-segment embedding
+            if segment_arrays:
+                embedding = self.models.embed_segments(
+                    segment_arrays, sample_rate, self.settings.vad_min_segment_ms
+                )
+            else:
+                embedding = self.models.embed(speech, sample_rate)
+
+            audio_duration = round(len(audio) / sample_rate, 3)
+            speech_duration = round(len(speech) / sample_rate, 3)
+            return embedding, audio_duration, speech_duration
+        finally:
+            for path in (source_path, normalized_path):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @staticmethod
     def _cluster(similarities: np.ndarray, threshold: float) -> np.ndarray:

@@ -145,9 +145,7 @@ def match_against_profiles(
             top_sim = centroid_sim
             top3_sim = centroid_sim
 
-        sim = 0.50 * centroid_sim + 0.30 * top3_sim + 0.20 * top_sim
-        conf = sigmoid_confidence(sim, threshold, steepness)
-        sim = round(sim, 4)
+        sim = round(0.50 * centroid_sim + 0.30 * top3_sim + 0.20 * top_sim, 4)
         conf = sigmoid_confidence(sim, threshold, steepness)
         results.append({
             "speaker_id": profile.speaker_id,

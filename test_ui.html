@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Recognition Test Console</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #dfe3e8;
+    --text: #1b1f24;
+    --muted: #6b7480;
+    --accent: #2f6df6;
+    --ok: #1a7f4b;
+    --warn: #b06a00;
+    --bad: #c03329;
+    --track: #e8ebef;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171b;
+      --panel: #1b1f25;
+      --border: #2c333c;
+      --text: #e8eaed;
+      --muted: #9aa4b1;
+      --accent: #6d9bff;
+      --ok: #4cc38a;
+      --warn: #e0a33a;
+      --bad: #f06a5e;
+      --track: #262c34;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171b;
+    --panel: #1b1f25;
+    --border: #2c333c;
+    --text: #e8eaed;
+    --muted: #9aa4b1;
+    --accent: #6d9bff;
+    --ok: #4cc38a;
+    --warn: #e0a33a;
+    --bad: #f06a5e;
+    --track: #262c34;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > * { min-width: 0; }
+  .grow { flex: 1 1 180px; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, select, button {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 10px;
+  }
+  input[type="file"] { padding: 6px; }
+  button {
+    background: var(--accent);
+    border-color: transparent;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--border); }
+  button.sm { padding: 5px 9px; font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .badge {
+    display: inline-block; padding: 3px 9px; border-radius: 99px;
+    font-size: 12px; font-weight: 600; border: 1px solid transparent;
+  }
+  .badge.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+  .badge.warn { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+  .badge.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .badge.mute { background: var(--track); color: var(--muted); }
+
+  .bar { height: 6px; background: var(--track); border-radius: 99px; overflow: hidden; min-width: 70px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+  .bar > i.ok { background: var(--ok); }
+  .bar > i.bad { background: var(--bad); }
+
+  .stat { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stat div span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat div b { font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .log {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 12px; white-space: pre-wrap; word-break: break-word;
+    background: var(--track); border-radius: 7px; padding: 10px;
+    max-height: 220px; overflow: auto; margin-top: 12px;
+  }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .matrix td, .matrix th { text-align: center; font-variant-numeric: tabular-nums; padding: 6px; }
+  .matrix th { font-size: 11px; }
+
+  .recbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-top: 12px; padding: 10px 12px;
+    background: var(--track); border-radius: 8px;
+  }
+  .rec-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--bad); flex: none;
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+  .rec-time { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 15px; }
+  .level { flex: 1 1 120px; height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .level > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width 90ms linear; }
+  button.rec { background: var(--bad); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Voice Recognition Test Console</h1>
+  <p class="sub">Enroll speakers, identify clips, and measure detection accuracy against the local API.</p>
+
+  <div class="panel">
+    <div class="row">
+      <div class="grow">
+        <label for="api">API base URL</label>
+        <input id="api" class="grow" style="width:100%" value="">
+      </div>
+      <div>
+        <label for="thr">Threshold override</label>
+        <input id="thr" type="number" step="0.01" min="0" max="1" placeholder="server default" style="width:130px">
+      </div>
+      <div style="align-self:flex-end">
+        <button id="refresh">Refresh status</button>
+      </div>
+      <div style="align-self:flex-end">
+        <button class="ghost" id="theme">Theme</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat" id="health"><span class="muted">Checking service…</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>1. Enroll a <em>new</em> speaker</h2>
+    <div class="row">
+      <div class="grow">
+        <label for="name">Speaker name</label>
+        <input id="name" placeholder="Alice" style="width:100%">
+      </div>
+      <div class="grow">
+        <label for="enrollFiles">Voice samples (one or more)</label>
+        <input id="enrollFiles" type="file" accept="audio/*,video/*" multiple style="width:100%">
+      </div>
+      <div style="align-self:flex-end">
+        <button class="ghost" id="enrollRec">Record</button>
+      </div>
+      <div style="align-self:flex-end">
+        <button id="enroll">Enroll</button>
+      </div>
+    </div>
+    <div class="recbar" id="enrollRecBar" hidden>
+      <span class="rec-dot"></span>
+      <span class="rec-time" id="enrollRecTime">0.0s</span>
+      <span class="level"><i id="enrollRecLevel"></i></span>
+      <span class="muted" id="enrollRecHint">Speak naturally &mdash; 3s minimum to enroll</span>
+    </div>
+    <div id="enrollTakes"></div>
+    <p class="hint">The first file creates the profile; any extra files are added to it as additional
+      embeddings. Use 3&ndash;5 clean samples from different sessions for best accuracy.<br>
+      Already enrolled this person? Use <b>Add sample</b> in the table below instead &mdash; re-entering
+      the same name here creates a <em>separate duplicate</em> profile (<code>spk_alice_1</code>).</p>
+    <div class="log" id="enrollLog" hidden></div>
+  </div>
+
+  <div class="panel">
+    <h2>2. Enrolled speakers</h2>
+    <div id="speakers"><span class="muted">Loading…</span></div>
+    <p class="hint">Use <b>Add sample</b> to attach more recordings to a speaker who is already
+      enrolled. Each extra sample is averaged into their profile, which improves accuracy.</p>
+    <input type="file" id="addSampleInput" accept="audio/*,video/*" multiple hidden>
+    <div class="log" id="speakerLog" hidden></div>
+  </div>
+
+  <div class="panel">
+    <h2>3. Identify a clip</h2>
+    <div class="row">
+      <div class="grow">
+        <label for="idFile">Audio clip</label>
+        <input id="idFile" type="file" accept="audio/*,video/*" style="width:100%">
+      </div>
+      <div style="align-self:flex-end">
+        <button class="ghost" id="idRec">Record</button>
+      </div>
+      <div style="align-self:flex-end">
+        <button id="identify">Identify</button>
+      </div>
+    </div>
+    <div class="recbar" id="idRecBar" hidden>
+      <span class="rec-dot"></span>
+      <span class="rec-time" id="idRecTime">0.0s</span>
+      <span class="level"><i id="idRecLevel"></i></span>
+      <span class="muted" id="idRecHint">Speak naturally &mdash; 1s minimum to identify</span>
+    </div>
+    <p class="hint" id="idRecReady" hidden></p>
+    <div id="identifyResult"></div>
+  </div>
+
+  <div class="panel">
+    <h2>4. Accuracy bench</h2>
+    <p class="hint" style="margin-top:0">
+      <b>A report card for the system.</b> Section&nbsp;3 identifies one clip and you judge the answer
+      yourself. This runs many clips at once and scores them <em>for</em> you, so you get a single
+      accuracy number instead of eyeballing results one at a time.
+    </p>
+    <p class="hint">
+      <b>How to use it:</b> add several clips whose real speaker you already know &mdash; ideally
+      recordings you did <em>not</em> enroll with. Tag each one with who it should come back as, then
+      press <b>Run bench</b>. Tag a clip as <em>Not enrolled</em> if it is someone the system has
+      never heard, to check that it correctly refuses to guess.
+    </p>
+    <p class="hint">
+      <b>Why it matters:</b> re-run the same clips with different values in the
+      <em>Threshold override</em> box at the top to find the setting that best fits your recordings.
+      A low threshold causes <em>false accepts</em> (strangers wrongly matched); a high one causes
+      <em>false rejects</em> (real people turned away). The scoreboard separates those two so you can
+      see which way to move.
+    </p>
+    <div class="row">
+      <div class="grow">
+        <label for="benchFiles">Add test clips</label>
+        <input id="benchFiles" type="file" accept="audio/*,video/*" multiple style="width:100%">
+      </div>
+      <div style="align-self:flex-end">
+        <button id="runBench">Run bench</button>
+      </div>
+      <div style="align-self:flex-end">
+        <button class="ghost" id="clearBench">Clear</button>
+      </div>
+    </div>
+    <div id="benchSummary"></div>
+    <div id="benchTable"></div>
+  </div>
+
+  <div class="panel">
+    <h2>5. Batch compare (no enrollment needed)</h2>
+    <div class="row">
+      <div class="grow">
+        <label for="batchFiles">Two or more clips</label>
+        <input id="batchFiles" type="file" accept="audio/*,video/*" multiple style="width:100%">
+      </div>
+      <div style="align-self:flex-end">
+        <button id="analyze">Compare</button>
+      </div>
+    </div>
+    <div id="batchResult"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = () => $("api").value.replace(/\/+$/, "");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct = (v) => (v == null ? "&mdash;" : v.toFixed(1) + "%");
+
+$("api").value = location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:8000";
+
+$("theme").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+};
+
+function thresholdQuery() {
+  const v = $("thr").value.trim();
+  return v === "" ? "" : "?threshold=" + encodeURIComponent(v);
+}
+
+async function call(path, options = {}) {
+  const res = await fetch(api() + path, options);
+  const text = await res.text();
+  let body;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (!res.ok) {
+    const detail = body && body.detail ? body.detail : (typeof body === "string" ? body : res.statusText);
+    throw new Error(detail || ("HTTP " + res.status));
+  }
+  return body;
+}
+
+// ---------------------------------------------------------------- microphone
+const MIC_SUPPORTED = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+
+function pickMimeType() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+  return candidates.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+/** Records from the microphone and resolves to a File the API can accept. */
+class MicRecorder {
+  constructor({ button, bar, timeEl, levelEl, onReady }) {
+    Object.assign(this, { button, bar, timeEl, levelEl, onReady });
+    this.recording = false;
+    button.onclick = () => (this.recording ? this.stop() : this.start());
+  }
+
+  async start() {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+    } catch (e) {
+      alert("Microphone unavailable: " + e.message +
+        "\n\nCheck that the browser has permission and no other app is using the mic.");
+      return;
+    }
+
+    this.stream = stream;
+    this.chunks = [];
+    this.startedAt = performance.now();
+    this.recorder = new MediaRecorder(stream, { mimeType: pickMimeType() });
+    this.recorder.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
+    this.recorder.start();
+
+    this.recording = true;
+    this.button.textContent = "Stop";
+    this.button.classList.add("rec");
+    this.button.classList.remove("ghost");
+    this.bar.hidden = false;
+
+    // Live level meter so a dead mic is obvious before you finish speaking.
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = this.ctx.createAnalyser();
+    analyser.fftSize = 512;
+    this.ctx.createMediaStreamSource(stream).connect(analyser);
+    const buf = new Uint8Array(analyser.fftSize);
+
+    const tick = () => {
+      if (!this.recording) return;
+      analyser.getByteTimeDomainData(buf);
+      let peak = 0;
+      for (const v of buf) peak = Math.max(peak, Math.abs(v - 128) / 128);
+      this.levelEl.style.width = Math.min(100, peak * 160) + "%";
+      this.timeEl.textContent = ((performance.now() - this.startedAt) / 1000).toFixed(1) + "s";
+      this.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  stop() {
+    if (!this.recording) return;
+    const seconds = (performance.now() - this.startedAt) / 1000;
+    this.recording = false;
+    cancelAnimationFrame(this.raf);
+
+    this.recorder.onstop = () => {
+      const type = this.recorder.mimeType || "audio/webm";
+      const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+      const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, "");
+      const file = new File([new Blob(this.chunks, { type })], `mic-${stamp}.${ext}`, { type });
+      this.onReady(file, seconds);
+    };
+    this.recorder.stop();
+    this.stream.getTracks().forEach((t) => t.stop());
+    this.ctx?.close();
+
+    this.button.textContent = "Record";
+    this.button.classList.remove("rec");
+    this.button.classList.add("ghost");
+    this.bar.hidden = true;
+    this.levelEl.style.width = "0";
+  }
+}
+
+let idRecording = null;
+let enrollTakes = [];
+
+if (!MIC_SUPPORTED) {
+  for (const id of ["idRec", "enrollRec"]) {
+    $(id).disabled = true;
+    $(id).title = "Recording needs a browser with MediaRecorder, served over localhost or HTTPS";
+  }
+} else {
+  new MicRecorder({
+    button: $("idRec"), bar: $("idRecBar"), timeEl: $("idRecTime"), levelEl: $("idRecLevel"),
+    onReady: (file, seconds) => {
+      idRecording = file;
+      $("idFile").value = "";
+      const short = seconds < 1;
+      $("idRecReady").hidden = false;
+      $("idRecReady").innerHTML = short
+        ? `<span class="err">Recorded ${seconds.toFixed(1)}s &mdash; under the 1s minimum, record again.</span>`
+        : `Recorded <b>${seconds.toFixed(1)}s</b> from the microphone. Press Identify.`;
+    },
+  });
+
+  new MicRecorder({
+    button: $("enrollRec"), bar: $("enrollRecBar"), timeEl: $("enrollRecTime"),
+    levelEl: $("enrollRecLevel"),
+    onReady: (file, seconds) => {
+      enrollTakes.push({ file, seconds });
+      renderTakes();
+    },
+  });
+}
+
+function renderTakes() {
+  const el = $("enrollTakes");
+  if (!enrollTakes.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<table><thead><tr><th>Recorded take</th><th class="num">Length</th><th></th></tr></thead>
+    <tbody>${enrollTakes.map((t, i) => `<tr>
+      <td>${esc(t.file.name)}</td>
+      <td class="num">${t.seconds.toFixed(1)}s ${t.seconds < 3
+        ? '<span class="badge bad">too short</span>' : '<span class="badge ok">ok</span>'}</td>
+      <td style="text-align:right"><button class="ghost sm" data-take="${i}">Remove</button></td>
+    </tr>`).join("")}</tbody></table>`;
+  el.querySelectorAll("[data-take]").forEach((b) => {
+    b.onclick = () => { enrollTakes.splice(+b.dataset.take, 1); renderTakes(); };
+  });
+}
+
+$("idFile").onchange = () => {
+  if ($("idFile").files.length) { idRecording = null; $("idRecReady").hidden = true; }
+};
+
+// ---------------------------------------------------------------- status
+async function loadHealth() {
+  const el = $("health");
+  try {
+    const h = await call("/health");
+    el.innerHTML = `
+      <div><span>Service</span><b class="badge ok">${esc(h.status)}</b></div>
+      <div><span>Speaker model</span><b>${h.speaker_model_loaded ? "loaded" : "not yet loaded"}</b></div>
+      <div><span>Enrolled speakers</span><b>${h.enrolled_speakers}</b></div>`;
+  } catch (e) {
+    el.innerHTML = `<span class="err">Cannot reach API at ${esc(api())} &mdash; ${esc(e.message)}</span>`;
+  }
+}
+
+let speakerCache = [];
+async function loadSpeakers() {
+  const el = $("speakers");
+  try {
+    speakerCache = await call("/speakers");
+    if (!speakerCache.length) {
+      el.innerHTML = '<span class="muted">No speakers enrolled yet.</span>';
+    } else {
+      el.innerHTML = `<table><thead><tr>
+          <th>Name</th><th>Speaker ID</th><th class="num">Samples</th><th>Enrolled</th><th></th>
+        </tr></thead><tbody>${speakerCache.map((s) => `
+          <tr>
+            <td><b>${esc(s.name)}</b></td>
+            <td class="muted">${esc(s.speaker_id)}</td>
+            <td class="num">${s.enrollment_count}</td>
+            <td class="muted">${esc(new Date(s.created_at).toLocaleString())}</td>
+            <td style="text-align:right; white-space:nowrap">
+              <button class="ghost sm" data-add="${esc(s.speaker_id)}">Add sample</button>
+              <button class="danger sm" data-del="${esc(s.speaker_id)}">Delete</button>
+            </td>
+          </tr>`).join("")}</tbody></table>`;
+      el.querySelectorAll("[data-add]").forEach((b) => {
+        b.onclick = () => {
+          pendingSpeakerId = b.dataset.add;
+          $("addSampleInput").click();
+        };
+      });
+      el.querySelectorAll("[data-del]").forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm(`Delete speaker "${b.dataset.del}"? This cannot be undone.`)) return;
+          try { await call("/speakers/" + encodeURIComponent(b.dataset.del), { method: "DELETE" }); }
+          catch (e) { alert(e.message); }
+          refreshAll();
+        };
+      });
+    }
+  } catch (e) {
+    el.innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  }
+  renderBench();
+}
+
+function refreshAll() { loadHealth(); loadSpeakers(); }
+$("refresh").onclick = refreshAll;
+
+// --------------------------------------------- add samples to existing speaker
+let pendingSpeakerId = null;
+
+$("addSampleInput").onchange = async () => {
+  const input = $("addSampleInput");
+  const files = [...input.files];
+  const speakerId = pendingSpeakerId;
+  input.value = "";
+  pendingSpeakerId = null;
+  if (!speakerId || !files.length) return;
+
+  const log = $("speakerLog");
+  log.hidden = false;
+  log.textContent = `Adding ${files.length} sample(s) to ${speakerId}…\n`;
+  try {
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await call(`/speakers/${encodeURIComponent(speakerId)}/add-embedding`,
+        { method: "POST", body: fd });
+      log.textContent += `${file.name} -> now ${res.enrollment_count} sample(s) — ${res.message}\n`;
+    }
+    log.textContent += "Done.";
+  } catch (e) {
+    log.textContent += "ERROR: " + e.message;
+  }
+  refreshAll();
+};
+
+// ---------------------------------------------------------------- enroll
+$("enroll").onclick = async () => {
+  const name = $("name").value.trim();
+  const files = [...enrollTakes.map((t) => t.file), ...$("enrollFiles").files];
+  const log = $("enrollLog");
+  if (!name || !files.length) {
+    alert("Enter a name, then record a take or pick at least one audio file.");
+    return;
+  }
+
+  log.hidden = false;
+  log.textContent = "Enrolling… first request may take 1–3 minutes while models download.\n";
+  $("enroll").disabled = true;
+  let speakerId = null;
+  try {
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      let res;
+      if (speakerId) {
+        res = await call(`/speakers/${encodeURIComponent(speakerId)}/add-embedding`, { method: "POST", body: fd });
+      } else {
+        fd.append("name", name);
+        res = await call("/speakers", { method: "POST", body: fd });
+        speakerId = res.speaker_id;
+      }
+      log.textContent += `${file.name} -> ${res.speaker_id} (${res.enrollment_count} sample(s)) — ${res.message}\n`;
+    }
+    log.textContent += "Done.";
+    $("enrollFiles").value = "";
+    enrollTakes = [];
+    renderTakes();
+  } catch (e) {
+    log.textContent += "ERROR: " + e.message;
+  } finally {
+    $("enroll").disabled = false;
+    refreshAll();
+  }
+};
+
+// ---------------------------------------------------------------- identify
+function decisionBadge(d) {
+  const map = { identified: "ok", uncertain: "warn", unknown: "bad", no_speakers_enrolled: "mute" };
+  return `<span class="badge ${map[d] || "mute"}">${esc(d)}</span>`;
+}
+
+function matchRows(matches, threshold) {
+  return matches.map((m) => {
+    const cls = m.similarity >= threshold ? "ok" : "bad";
+    return `<tr>
+      <td class="num">${m.rank ?? ""}</td>
+      <td><b>${esc(m.name)}</b><br><span class="muted" style="font-size:11px">${esc(m.speaker_id)}</span></td>
+      <td style="min-width:120px">
+        <div class="bar"><i class="${cls}" style="width:${Math.max(0, Math.min(100, m.match_percentage))}%"></i></div>
+      </td>
+      <td class="num">${pct(m.match_percentage)}</td>
+      <td class="num">${pct(m.confidence_percentage)}</td>
+      <td class="num muted">${m.centroid_similarity.toFixed(3)}</td>
+      <td class="num muted">${m.enrollment_top_similarity.toFixed(3)}</td>
+      <td class="num">${m.same_person ? '<span class="badge ok">yes</span>' : '<span class="badge mute">no</span>'}</td>
+    </tr>`;
+  }).join("");
+}
+
+$("identify").onclick = async () => {
+  const file = idRecording || $("idFile").files[0];
+  const out = $("identifyResult");
+  if (!file) { alert("Record from the microphone or pick an audio clip first."); return; }
+  out.innerHTML = '<p class="muted">Identifying…</p>';
+  $("identify").disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await call("/identify" + thresholdQuery(), { method: "POST", body: fd });
+    const top = r.top_match;
+    out.innerHTML = `
+      <div class="divider"></div>
+      <div class="stat" style="margin-bottom:14px">
+        <div><span>Decision</span><b>${decisionBadge(r.decision)}</b></div>
+        <div><span>Top match</span><b>${top ? esc(top.name) : "&mdash;"}</b></div>
+        <div><span>Voice match</span><b>${top ? pct(top.match_percentage) : "&mdash;"}</b></div>
+        <div><span>Confidence</span><b>${top ? pct(top.confidence_percentage) : "&mdash;"}</b></div>
+        <div><span>Top1&ndash;top2 margin</span><b>${r.score_margin == null ? "&mdash;" : r.score_margin.toFixed(4)}</b></div>
+        <div><span>Speech used</span><b>${r.speech_duration_seconds.toFixed(1)}s</b></div>
+      </div>
+      <p class="hint" style="margin-top:0">
+        Threshold ${r.threshold} &middot; minimum margin ${r.minimum_margin} &middot;
+        clip length ${r.query_duration_seconds.toFixed(1)}s
+      </p>
+      ${r.ranked_matches.length ? `<table><thead><tr>
+          <th class="num">#</th><th>Speaker</th><th>Match</th><th class="num">Match %</th>
+          <th class="num">Confidence</th><th class="num">Centroid</th><th class="num">Best sample</th>
+          <th class="num">Same?</th>
+        </tr></thead><tbody>${matchRows(r.ranked_matches, r.threshold)}</tbody></table>`
+        : '<p class="muted">No candidate speakers returned.</p>'}`;
+  } catch (e) {
+    out.innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  } finally {
+    $("identify").disabled = false;
+  }
+};
+
+// ---------------------------------------------------------------- bench
+let bench = [];
+
+$("benchFiles").onchange = () => {
+  for (const f of $("benchFiles").files) bench.push({ file: f, expected: "", result: null });
+  $("benchFiles").value = "";
+  renderBench();
+};
+$("clearBench").onclick = () => { bench = []; $("benchSummary").innerHTML = ""; renderBench(); };
+
+function renderBench() {
+  const el = $("benchTable");
+  if (!bench.length) { el.innerHTML = '<p class="muted">No test clips added yet.</p>'; return; }
+  const opts = (sel) => ['<option value="">— pick expected —</option>',
+    '<option value="__none__"' + (sel === "__none__" ? " selected" : "") + ">Not enrolled (should reject)</option>",
+    ...speakerCache.map((s) => `<option value="${esc(s.speaker_id)}"${sel === s.speaker_id ? " selected" : ""}>${esc(s.name)}</option>`)].join("");
+
+  el.innerHTML = `<table><thead><tr>
+      <th>Clip</th><th>Expected</th><th>Predicted</th><th class="num">Match %</th>
+      <th>Decision</th><th class="num">Result</th><th></th>
+    </tr></thead><tbody>${bench.map((row, i) => {
+      const r = row.result;
+      let predicted = '<span class="muted">—</span>', matchPct = "—", dec = "—", verdict = '<span class="muted">—</span>';
+      if (r && r.error) {
+        predicted = `<span class="err">${esc(r.error)}</span>`;
+        verdict = '<span class="badge bad">error</span>';
+      } else if (r) {
+        predicted = r.top && r.decision === "identified"
+          ? `<b>${esc(r.top.name)}</b>`
+          : '<span class="muted">rejected</span>';
+        matchPct = r.top ? pct(r.top.match_percentage) : "—";
+        dec = decisionBadge(r.decision);
+        verdict = r.correct ? '<span class="badge ok">pass</span>' : '<span class="badge bad">fail</span>';
+      }
+      return `<tr>
+        <td>${esc(row.file.name)}</td>
+        <td><select data-exp="${i}">${opts(row.expected)}</select></td>
+        <td>${predicted}</td>
+        <td class="num">${matchPct}</td>
+        <td>${dec}</td>
+        <td class="num">${verdict}</td>
+        <td style="text-align:right"><button class="ghost sm" data-rm="${i}">Remove</button></td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+
+  el.querySelectorAll("[data-exp]").forEach((s) => {
+    s.onchange = () => { bench[+s.dataset.exp].expected = s.value; };
+  });
+  el.querySelectorAll("[data-rm]").forEach((b) => {
+    b.onclick = () => { bench.splice(+b.dataset.rm, 1); renderBench(); };
+  });
+}
+
+$("runBench").onclick = async () => {
+  if (!bench.length) { alert("Add at least one test clip."); return; }
+  if (bench.some((r) => !r.expected)) { alert("Tag every clip with its expected speaker first."); return; }
+  $("runBench").disabled = true;
+  $("benchSummary").innerHTML = '<p class="muted">Running…</p>';
+  try {
+    for (const row of bench) {
+      try {
+        const fd = new FormData();
+        fd.append("file", row.file);
+        const r = await call("/identify" + thresholdQuery(), { method: "POST", body: fd });
+        const identified = r.decision === "identified";
+        const correct = row.expected === "__none__"
+          ? !identified
+          : identified && r.top_match && r.top_match.speaker_id === row.expected;
+        row.result = { top: r.top_match, decision: r.decision, correct, identified };
+      } catch (e) {
+        row.result = { error: e.message, correct: false };
+      }
+      renderBench();
+    }
+    summarize();
+  } finally {
+    $("runBench").disabled = false;
+  }
+};
+
+function summarize() {
+  const done = bench.filter((r) => r.result);
+  const passed = done.filter((r) => r.result.correct).length;
+  const falseAccept = bench.filter((r) => r.expected === "__none__" && r.result && r.result.identified).length;
+  const falseReject = bench.filter((r) => r.expected !== "__none__" && r.result && !r.result.error && !r.result.identified).length;
+  const misId = bench.filter((r) => r.expected !== "__none__" && r.result && r.result.identified && !r.result.correct).length;
+  const acc = done.length ? (passed / done.length) * 100 : 0;
+  $("benchSummary").innerHTML = `
+    <div class="divider"></div>
+    <div class="stat" style="margin-bottom:12px">
+      <div><span>Accuracy</span><b>${acc.toFixed(1)}%</b></div>
+      <div><span>Passed</span><b>${passed} / ${done.length}</b></div>
+      <div><span>False accepts</span><b class="${falseAccept ? "err" : ""}">${falseAccept}</b></div>
+      <div><span>False rejects</span><b class="${falseReject ? "err" : ""}">${falseReject}</b></div>
+      <div><span>Wrong identity</span><b class="${misId ? "err" : ""}">${misId}</b></div>
+    </div>
+    <p class="hint" style="margin-top:0">
+      False accepts mean the threshold is too low; false rejects mean it is too high or enrollment is thin.
+      Change the threshold override above and re-run to compare.
+    </p>`;
+}
+
+// ---------------------------------------------------------------- batch
+$("analyze").onclick = async () => {
+  const files = [...$("batchFiles").files];
+  const out = $("batchResult");
+  if (files.length < 2) { alert("Pick at least two clips to compare."); return; }
+  out.innerHTML = '<p class="muted">Comparing…</p>';
+  $("analyze").disabled = true;
+  try {
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f));
+    const r = await call("/analyses" + thresholdQuery(), { method: "POST", body: fd });
+
+    const ids = r.clips.map((c) => c.clip_id);
+    const sim = {};
+    r.comparisons.forEach((c) => {
+      sim[c.clip_a + "|" + c.clip_b] = c;
+      sim[c.clip_b + "|" + c.clip_a] = c;
+    });
+
+    out.innerHTML = `
+      <div class="divider"></div>
+      <h2 style="font-size:13px">Detected groups</h2>
+      <table><thead><tr><th>Person</th><th>Clips</th></tr></thead><tbody>
+        ${Object.entries(r.groups).map(([p, clips]) => `<tr>
+          <td><b>${esc(p)}</b></td>
+          <td>${clips.map((id) => esc(r.clips.find((c) => c.clip_id === id).filename)).join(", ")}</td>
+        </tr>`).join("")}
+      </tbody></table>
+
+      <h2 style="font-size:13px; margin-top:18px">Similarity matrix</h2>
+      <table class="matrix"><thead><tr><th></th>${ids.map((i) => `<th>${esc(i.replace("clip_", ""))}</th>`).join("")}</tr></thead>
+      <tbody>${ids.map((a) => `<tr><th>${esc(r.clips.find((c) => c.clip_id === a).filename)}</th>${
+        ids.map((b) => {
+          if (a === b) return '<td class="muted">—</td>';
+          const c = sim[a + "|" + b];
+          if (!c) return "<td></td>";
+          const color = c.same_speaker ? "var(--ok)" : "var(--muted)";
+          return `<td style="color:${color};font-weight:${c.same_speaker ? 600 : 400}">${c.similarity.toFixed(3)}</td>`;
+        }).join("")}</tr>`).join("")}</tbody></table>
+
+      <p class="hint">Green values are above the ${r.threshold} threshold (same speaker). Report ID
+        <code>${esc(r.analysis_id)}</code> &mdash;
+        <a href="${esc(api())}/analyses/${esc(r.analysis_id)}/download" target="_blank">download JSON</a>.</p>`;
+  } catch (e) {
+    out.innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  } finally {
+    $("analyze").disabled = false;
+  }
+};
+
+refreshAll();
+</script>
+</body>
+</html>

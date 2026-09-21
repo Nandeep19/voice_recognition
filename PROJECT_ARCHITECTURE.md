@@ -83,9 +83,20 @@ Files: `app/audio.py`, `app/vad.py`, `app/models.py`
 - Multiple VAD segments are embedded separately and combined using
   square-root-duration weighting.
 
-The ECAPA model currently receives normalized VAD speech directly. The custom
-bandpass and pre-emphasis functions remain in `app/audio.py` and have tests,
-but they are not called by `ModelRegistry.embed()`.
+The ECAPA model receives normalized VAD speech directly. ECAPA-TDNN was trained
+on raw 16 kHz audio, so no extra filtering is applied: additional bandpass or
+pre-emphasis moves the input away from the training distribution and tends to
+degrade the embedding.
+
+Clips must contain a minimum amount of detected speech before an embedding is
+accepted. Enrollment requires more than identification, because a weak
+enrollment is averaged into the centroid permanently and degrades every later
+match against that speaker.
+
+```text
+ENROLLMENT_MIN_SPEECH_MS = 3000   enrollment
+MIN_SPEECH_MS            = 1000   identification and batch analysis
+```
 
 ### Scoring Layer
 
@@ -153,7 +164,7 @@ Files: `app/schemas.py`, `app/config.py`
 | --- | --- |
 | `app/main.py` | HTTP API and application initialization |
 | `app/pipeline.py` | Enrollment, identification, and analysis workflows |
-| `app/audio.py` | FFmpeg normalization and optional signal utilities |
+| `app/audio.py` | FFmpeg normalization and WAV loading |
 | `app/vad.py` | Silero model loading and speech extraction |
 | `app/models.py` | ECAPA model loading and embedding aggregation |
 | `app/scoring.py` | Cosine scoring, combined matching, confidence |
@@ -396,6 +407,7 @@ controlled worker strategy or a background inference queue.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/` | Service name and documentation path |
+| GET | `/ui` | Browser test console (enroll, identify, accuracy bench) |
 | GET | `/health` | Model-load state and enrolled-speaker count |
 | POST | `/speakers` | Create a speaker profile |
 | POST | `/speakers/{id}/enroll` | Add an enrollment to a profile |
@@ -420,7 +432,7 @@ controlled worker strategy or a background inference queue.
 
 The test suite covers:
 
-- Pre-emphasis, bandpass, and normalization utility behavior.
+- Audio loading: mono downmix and resampling to 16 kHz.
 - Cosine similarity and similarity matrices.
 - Sigmoid confidence behavior.
 - Combined centroid/enrollment scoring.
@@ -459,10 +471,8 @@ dataset, real uploads, FFmpeg, Silero, and ECAPA inference together.
 7. **No explicit audio-quality gate:** clipping, low SNR, background voices,
    and music are not scored before enrollment.
 8. **Synchronous inference:** expensive operations can block API workers.
-9. **Temporary-file cleanup is success-oriented:** failed processing can leave
-   files behind.
-10. **Unused preprocessing utilities remain:** their presence can make the
-    active embedding path unclear unless this distinction is documented.
+9. **Minimum-speech gates are heuristic:** 3000 ms and 1000 ms are reasonable
+   defaults for ECAPA-TDNN but have not been tuned on project data.
 
 ## 17. Recommended Next Architecture Improvements
 

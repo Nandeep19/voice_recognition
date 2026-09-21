@@ -27,13 +27,14 @@ def test_close_top_matches_are_uncertain(monkeypatch) -> None:
         speaker_similarity_threshold=0.75,
         identification_min_margin=0.05,
         sigmoid_steepness=15.0,
+        min_speech_ms=1000,
     )
     pipeline = VoicePipeline(settings, models=None)
     profiles = [_profile("alice", [0.80, 0.60]), _profile("bob", [0.78, 0.625779])]
 
     monkeypatch.setattr("app.pipeline.load_all_profiles", lambda _: profiles)
 
-    async def fake_process(_file):
+    async def fake_process(_file, _min_speech_ms):
         import numpy as np
         return np.array([1.0, 0.0]), 4.0, 3.0
 

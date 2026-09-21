@@ -57,7 +57,13 @@ app = FastAPI(
 
 @app.get("/", include_in_schema=False)
 def root() -> dict[str, str]:
-    return {"message": settings.app_name, "docs": "/docs"}
+    return {"message": settings.app_name, "docs": "/docs", "test_console": "/ui"}
+
+
+@app.get("/ui", include_in_schema=False)
+def test_console() -> FileResponse:
+    """Serve the browser test console (same-origin, so no CORS setup needed)."""
+    return FileResponse(Path(__file__).resolve().parent.parent / "test_ui.html")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"], include_in_schema=False)

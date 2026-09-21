@@ -18,10 +18,16 @@ class Settings(BaseSettings):
     vad_merge_gap_ms: int = 300  # merge segments closer than this
 
     # --- Scoring ---
-    speaker_similarity_threshold: float = 0.65  # ECAPA-TDNN needs ~0.75 for reliable decisions
+    speaker_similarity_threshold: float = 0.75  # ECAPA-TDNN needs ~0.75 for reliable decisions
     identification_min_margin: float = 0.05  # required gap between top-1 and top-2 scores
     sigmoid_steepness: float = 15.0  # controls confidence curve sharpness around threshold
-    min_speech_ms: int = 250  # absolute minimum speech to accept a clip
+
+    # --- Minimum usable speech ---
+    # ECAPA-TDNN embeddings are unstable below a few seconds of speech. Enrollment
+    # is stricter than identification because a weak enrollment is averaged into the
+    # centroid permanently, degrading every later match against that speaker.
+    min_speech_ms: int = 1000  # minimum speech to identify or compare a clip
+    enrollment_min_speech_ms: int = 3000  # minimum speech to accept an enrollment
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
