@@ -145,7 +145,15 @@ def match_against_profiles(
             top_sim = centroid_sim
             top3_sim = centroid_sim
 
-        sim = round(0.50 * centroid_sim + 0.30 * top3_sim + 0.20 * top_sim, 4)
+        if len(enrollment_sims) >= 3:
+            sim = 0.50 * centroid_sim + 0.30 * top3_sim + 0.20 * top_sim
+        else:
+            # With fewer than three samples "top 3" is just the mean of all of
+            # them, which duplicates the centroid while letting one weak sample
+            # outvote it — a query could score below the centroid it matched.
+            # Drop that term and keep the original centroid:best weighting.
+            sim = 0.70 * centroid_sim + 0.30 * top_sim
+        sim = round(sim, 4)
         conf = sigmoid_confidence(sim, threshold, steepness)
         results.append({
             "speaker_id": profile.speaker_id,

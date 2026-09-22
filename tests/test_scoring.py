@@ -136,6 +136,33 @@ class TestMatchAgainstProfiles:
         assert match["match_percentage"] == 84.0
         assert match["confidence_percentage"] == round(match["confidence"] * 100, 2)
 
+    def test_fewer_than_three_enrollments_drop_the_top3_term(self) -> None:
+        """Two samples spread around the query: the centroid matches it better
+        than either sample does. The score must not be dragged far below that
+        centroid by averaging in the weaker sample."""
+        query = np.array([1.0, 0.0, 0.0])
+        profile = self._make_profile(
+            "alice",
+            [1.0, 0.0, 0.0],
+            enrollments=[[0.8, 0.6, 0.0], [0.8, -0.6, 0.0]],
+        )
+
+        match = match_against_profiles(query, [profile], threshold=0.75)[0]
+
+        assert match["centroid_similarity"] == 1.0
+        assert match["enrollment_top_similarity"] == 0.8
+        # 0.70 * 1.0 + 0.30 * 0.8 — the three-sample formula would give 0.90.
+        assert match["similarity"] == 0.94
+
+    def test_single_enrollment_scores_as_its_own_centroid(self) -> None:
+        query = np.array([1.0, 0.0])
+        profile = self._make_profile("alice", [1.0, 0.0], enrollments=[[1.0, 0.0]])
+
+        match = match_against_profiles(query, [profile], threshold=0.75)[0]
+
+        assert match["similarity"] == 1.0
+        assert match["match_percentage"] == 100.0
+
 
 class TestPairwiseResults:
     def test_correct_number_of_pairs(self) -> None:

@@ -13,6 +13,7 @@ than any single enrollment because it averages out per-session variability
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,18 @@ import numpy as np
 
 
 _storage_lock = Lock()
+
+
+def _write_profile(path: Path, profile: SpeakerProfile) -> None:
+    """Write a profile atomically.
+
+    Profiles hold irreplaceable enrollment data, so the JSON goes to a
+    temporary file first and is then swapped in with os.replace. A crash
+    mid-write leaves the previous profile intact instead of truncating it.
+    """
+    temp_path = path.with_name(f"{path.name}.tmp")
+    temp_path.write_text(json.dumps(profile.to_dict(), indent=2), encoding="utf-8")
+    os.replace(temp_path, path)
 
 
 class SpeakerProfile:
@@ -151,10 +164,7 @@ def enroll_speaker(
                 profile.enrollment_count = len(profile.embeddings)
                 profile.centroid = compute_centroid(profile.embeddings)
                 profile.updated_at = now
-                path.write_text(
-                    json.dumps(profile.to_dict(), indent=2),
-                    encoding="utf-8",
-                )
+                _write_profile(path, profile)
                 return profile
 
         # Create new profile
@@ -184,10 +194,7 @@ def enroll_speaker(
 
         path = _profile_path(profiles_dir, speaker_id)
         profiles_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(profile.to_dict(), indent=2),
-            encoding="utf-8",
-        )
+        _write_profile(path, profile)
         return profile
 
 

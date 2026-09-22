@@ -32,6 +32,18 @@ def test_enroll_creates_profile(tmp_path: Path) -> None:
     assert len(files) == 1
 
 
+def test_enroll_leaves_no_temp_files(tmp_path: Path) -> None:
+    """Profiles are written via a temporary file and swapped in; the temporary
+    file must not survive, or load_all_profiles would see partial writes."""
+    profile = enroll_speaker(tmp_path, "Alice", np.array([1.0, 0.0]), "a.wav", 5.0)
+    enroll_speaker(tmp_path, "Alice", np.array([0.9, 0.1]), "b.wav", 5.0,
+                   speaker_id=profile.speaker_id)
+
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert len(list(tmp_path.glob("*.json"))) == 1
+    assert load_profile(tmp_path, profile.speaker_id).enrollment_count == 2
+
+
 def test_enroll_adds_to_existing(tmp_path: Path) -> None:
     emb1 = np.array([1.0, 0.0, 0.0])
     profile1 = enroll_speaker(
