@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VR-DOPAMS Voice</title>
+<style>
+  :root {
+    --bg: #f6f7f5;
+    --panel: #ffffff;
+    --ink: #1c2321;
+    --soft: #66706c;
+    --line: #e3e7e4;
+    --accent: #0f766e;
+    --accent-ink: #ffffff;
+    --accent-weak: #e6f3f1;
+    --ok: #15803d;
+    --ok-weak: #e8f5ec;
+    --warn: #b45309;
+    --warn-weak: #fdf3e4;
+    --bad: #b91c1c;
+    --bad-weak: #fbeaea;
+    --bar: #dfe5e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121614; --panel: #1a1f1d; --ink: #e7ecea; --soft: #9aa6a1; --line: #2a322f;
+      --accent: #2dd4bf; --accent-ink: #062b27; --accent-weak: #133230;
+      --ok: #4ade80; --ok-weak: #15291d; --warn: #fbbf24; --warn-weak: #2e2512;
+      --bad: #f87171; --bad-weak: #321a1a; --bar: #2a322f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121614; --panel: #1a1f1d; --ink: #e7ecea; --soft: #9aa6a1; --line: #2a322f;
+    --accent: #2dd4bf; --accent-ink: #062b27; --accent-weak: #133230;
+    --ok: #4ade80; --ok-weak: #15291d; --warn: #fbbf24; --warn-weak: #2e2512;
+    --bad: #f87171; --bad-weak: #321a1a; --bar: #2a322f;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+  .shell > * { min-width: 0; }
+  aside { border-right: 1px solid var(--line); padding: 20px 14px; position: sticky; top: 0; height: 100vh; }
+  .brand { font-weight: 700; font-size: 17px; margin: 0 8px 4px; }
+  .brand span { color: var(--accent); }
+  .sub { color: var(--soft); font-size: 12.5px; margin: 0 8px 22px; }
+  nav button {
+    display: block; width: 100%; text-align: left; border: 0; background: none; cursor: pointer;
+    padding: 9px 10px; border-radius: 8px; color: var(--soft); font-weight: 550; margin-bottom: 2px;
+  }
+  nav button:hover { color: var(--ink); background: var(--panel); }
+  nav button[aria-current="page"] { color: var(--accent); background: var(--accent-weak); }
+  .side-stats { margin: 26px 8px 0; font-size: 13px; color: var(--soft); display: grid; gap: 6px; }
+  .side-stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  main { padding: 28px 32px 60px; max-width: 980px; width: 100%; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lead { color: var(--soft); margin: 0 0 22px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label.field { display: grid; gap: 4px; font-size: 13px; color: var(--soft); }
+  input[type=text], input[type=search], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .btn { border: 1px solid var(--line); background: var(--panel); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 550; }
+  .btn:hover { border-color: var(--soft); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger { color: var(--bad); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.rec { color: var(--bad); }
+  .btn.rec.on { background: var(--bad); color: #fff; border-color: var(--bad); }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; padding: 3px; background: var(--bg); }
+  .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--soft); font-weight: 550; }
+  .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; color: var(--soft); }
+  .drop.over { border-color: var(--accent); background: var(--accent-weak); }
+  .clips { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+  .clips li { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px 6px 12px; }
+  .clips li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+  .clips audio { height: 32px; max-width: 260px; }
+  .x { border: 0; background: none; cursor: pointer; color: var(--soft); font-size: 18px; line-height: 1; padding: 2px 6px; }
+
+  .msg { padding: 10px 12px; border-radius: 8px; margin-top: 12px; font-size: 14px; }
+  .msg.ok { background: var(--ok-weak); color: var(--ok); }
+  .msg.err { background: var(--bad-weak); color: var(--bad); }
+  .msg.info { background: var(--accent-weak); color: var(--accent); }
+
+  .verdict { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+  .badge { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 4px 9px; border-radius: 6px; }
+  .badge.match { background: var(--ok-weak); color: var(--ok); }
+  .badge.ambiguous { background: var(--warn-weak); color: var(--warn); }
+  .badge.no_match { background: var(--bad-weak); color: var(--bad); }
+  .who { font-size: 20px; font-weight: 700; }
+  .who small { display: block; font-size: 13px; font-weight: 400; color: var(--soft); }
+  .facts { display: flex; gap: 22px; flex-wrap: wrap; font-size: 13px; color: var(--soft); margin-bottom: 14px; }
+  .facts b { display: block; font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .bars { display: grid; gap: 8px; }
+  .bar { display: grid; grid-template-columns: minmax(120px, 200px) 1fr 56px; gap: 10px; align-items: center; font-size: 13.5px; }
+  .bar .track { height: 8px; background: var(--bar); border-radius: 4px; position: relative; }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--soft); }
+  .bar .fill.hit { background: var(--accent); }
+  .bar .thr { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .45; }
+  .bar .pct { text-align: right; font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--soft); font-weight: 550; font-size: 12.5px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px; border-bottom: 1px solid var(--line); }
+  tr.pick { cursor: pointer; }
+  tr.pick:hover td { background: var(--bg); }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--soft); }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--soft); }
+
+  .speaker-layout { display: grid; grid-template-columns: 1fr 1.1fr; gap: 16px; align-items: start; }
+  dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 10px; margin: 0 0 14px; font-size: 14px; }
+  dt { color: var(--soft); }
+  dd { margin: 0; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 14px; margin: 4px 0 10px; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  @media (max-width: 760px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 14px 16px 8px; }
+    .sub, .side-stats { display: none; }
+    nav { display: flex; gap: 4px; overflow-x: auto; }
+    nav button { width: auto; white-space: nowrap; }
+    main { padding: 18px 16px 48px; }
+    .grid2, .speaker-layout { grid-template-columns: 1fr; }
+    .bar { grid-template-columns: 110px 1fr 48px; }
+    .clips audio { max-width: 150px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand">VR-<span>DOPAMS</span></div>
+    <div class="sub">Voice recognition</div>
+    <nav id="nav">
+      <button data-page="identify" aria-current="page">Identify</button>
+      <button data-page="enroll">Enroll</button>
+      <button data-page="speakers">Speakers</button>
+      <button data-page="compare">Compare clips</button>
+      <button data-page="activity">Activity</button>
+    </nav>
+    <div class="side-stats">
+      <div><b id="st-persons">–</b> speakers</div>
+      <div><b id="st-clips">–</b> stored clips</div>
+      <div><b id="st-audio">–</b> of audio</div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ------------------------------------------------------ identify -->
+    <section id="page-identify">
+      <h1>Identify a voice</h1>
+      <p class="lead">Upload or record a clip with at least a second of clear speech.</p>
+
+      <div class="panel">
+        <div class="row" style="justify-content: space-between; margin-bottom: 14px">
+          <div class="seg" id="id-mode">
+            <button aria-pressed="true" data-mode="match">Who is it?</button>
+            <button aria-pressed="false" data-mode="search">Top candidates</button>
+            <button aria-pressed="false" data-mode="verify">Is it this person?</button>
+          </div>
+        </div>
+        <label class="field" id="verify-wrap" hidden style="margin-bottom: 12px">Person
+          <select id="verify-person"></select>
+        </label>
+        <div class="clip-source" id="id-source"></div>
+        <div class="row" style="margin-top: 14px">
+          <button class="btn primary" id="id-run" disabled>Run</button>
+        </div>
+      </div>
+      <div id="id-result"></div>
+    </section>
+
+    <!-- -------------------------------------------------------- enroll -->
+    <section id="page-enroll" hidden>
+      <h1>Enroll a speaker</h1>
+      <p class="lead">Add 1–5 recordings of the same person, each with at least 3 seconds of speech. Different sessions or microphones make the record more robust. Every clip is stored in the database.</p>
+      <form class="panel" id="enroll-form" autocomplete="off">
+        <div class="grid2">
+          <label class="field">Name *<input type="text" name="name" required maxlength="200" /></label>
+          <label class="field">Person ID <span class="muted">(optional)</span><input type="text" name="person_id" pattern="[A-Za-z0-9_\-]{1,64}" /></label>
+        </div>
+        <details>
+          <summary>More details</summary>
+          <div class="grid2">
+            <label class="field">Date of birth<input type="text" name="dob" placeholder="YYYY-MM-DD" /></label>
+            <label class="field">Gender<select name="gender"><option></option><option>Male</option><option>Female</option><option>Other</option></select></label>
+            <label class="field">Father's name<input type="text" name="father_name" /></label>
+            <label class="field">Status<select name="status"><option></option><option>Active</option><option>Wanted</option><option>In custody</option><option>Released</option></select></label>
+            <label class="field">Crime type<input type="text" name="crime_type" /></label>
+            <label class="field">Police station<input type="text" name="police_station" /></label>
+            <label class="field">Jail<input type="text" name="jail_name" /></label>
+            <label class="field">Sentence<input type="text" name="sentence" /></label>
+          </div>
+          <label class="field" style="margin-top: 12px">Crime details<textarea name="crime_details" rows="2"></textarea></label>
+        </details>
+        <h2 style="margin-top: 8px">Voice clips</h2>
+        <div id="enroll-source"></div>
+        <label class="row" style="margin-top: 12px; font-size: 14px; gap: 6px">
+          <input type="checkbox" name="allow_duplicate" value="true" /> Enroll even if this voice is already on record
+        </label>
+        <div class="row" style="margin-top: 14px">
+          <button class="btn primary" id="enroll-run" type="submit" disabled>Enroll</button>
+        </div>
+        <div id="enroll-result"></div>
+      </form>
+    </section>
+
+    <!-- ------------------------------------------------------ speakers -->
+    <section id="page-speakers" hidden>
+      <h1>Speakers</h1>
+      <p class="lead">Everyone enrolled, with their stored clips.</p>
+      <div class="speaker-layout">
+        <div class="panel">
+          <input type="search" id="sp-filter" placeholder="Filter by name or ID" style="margin-bottom: 10px" />
+          <table>
+            <thead><tr><th>Name</th><th>ID</th><th class="num">Clips</th></tr></thead>
+            <tbody id="sp-rows"></tbody>
+          </table>
+        </div>
+        <div class="panel" id="sp-detail"><p class="muted" style="margin: 0">Select a speaker.</p></div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------- compare -->
+    <section id="page-compare" hidden>
+      <h1>Compare clips</h1>
+      <p class="lead">Check whether 2–10 clips are the same speaker. Nothing is stored.</p>
+      <div class="panel">
+        <div id="cmp-source"></div>
+        <div class="row" style="margin-top: 14px"><button class="btn primary" id="cmp-run" disabled>Compare</button></div>
+      </div>
+      <div id="cmp-result"></div>
+    </section>
+
+    <!-- ------------------------------------------------------ activity -->
+    <section id="page-activity" hidden>
+      <h1>Activity</h1>
+      <p class="lead">Recent lookups and database health.</p>
+      <div class="panel">
+        <div class="facts" id="act-facts"></div>
+        <table>
+          <thead><tr><th>When</th><th>Type</th><th>Person</th><th class="num">Score</th><th>Result</th></tr></thead>
+          <tbody id="act-rows"></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2>Integrity</h2>
+        <div id="act-integrity" class="muted">–</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (v) => (v == null ? "–" : `${(v * 100).toFixed(1)}%`);
+const when = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "–");
+const secs = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : s >= 60 ? `${(s / 60).toFixed(1)} min` : `${Math.round(s)} s`);
+const msg = (kind, text) => `<div class="msg ${kind}">${esc(text)}</div>`;
+const busy = (text) => `<div class="msg info"><span class="spin"></span> ${esc(text)}</div>`;
+
+async function api(path, options = {}) {
+  const res = await fetch(path, options);
+  let body = null;
+  try { body = await res.json(); } catch { /* non-JSON error page */ }
+  if (!res.ok) {
+    const detail = body && body.detail;
+    throw new Error(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : `Request failed (${res.status})`);
+  }
+  return body;
+}
+
+/* ---------------------------------------------------------------- nav -- */
+const pages = ["identify", "enroll", "speakers", "compare", "activity"];
+function show(page) {
+  for (const p of pages) $(`#page-${p}`).hidden = p !== page;
+  for (const b of document.querySelectorAll("#nav button")) b.setAttribute("aria-current", b.dataset.page === page ? "page" : "false");
+  if (page === "speakers") loadSpeakers();
+  if (page === "activity") loadActivity();
+  try { localStorage.setItem("vr-page", page); } catch {}
+}
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.page); });
+
+async function loadStats() {
+  try {
+    const d = (await api("/dashboard/summary")).data;
+    $("#st-persons").textContent = d.total_persons;
+    $("#st-clips").textContent = d.total_clips;
+    $("#st-audio").textContent = secs(d.audio_seconds);
+    return d;
+  } catch { return null; }
+}
+
+/* -------------------------------------------------- clip picker widget -- */
+// Files or microphone recordings, with a player for each. `max` caps the list.
+function clipPicker(root, { max, onChange }) {
+  let clips = [];
+  let recorder = null;
+  root.innerHTML = `
+    <div class="drop">
+      <div class="row" style="justify-content: center">
+        <label class="btn">Choose file${max > 1 ? "s" : ""}<input type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.ogg,.opus,.flac,.aac,.amr,.webm" ${max > 1 ? "multiple" : ""} hidden /></label>
+        <button type="button" class="btn rec">● Record</button>
+      </div>
+      <div style="font-size: 13px; margin-top: 8px">or drop audio here</div>
+    </div>
+    <ul class="clips"></ul>`;
+  const list = $(".clips", root), drop = $(".drop", root), input = $("input", root), recBtn = $(".rec", root);
+
+  function render() {
+    list.innerHTML = clips.map((c, i) => `
+      <li><span class="name" title="${esc(c.name)}">${esc(c.name)}</span>
+      <audio controls preload="metadata" src="${c.url}"></audio>
+      <button type="button" class="x" data-i="${i}" aria-label="Remove">×</button></li>`).join("");
+    onChange(clips);
+  }
+  function add(blob, name) {
+    if (max === 1) {
+      clips.forEach((c) => URL.revokeObjectURL(c.url));
+      clips = [];
+    }
+    if (clips.length >= max) return;
+    clips.push({ blob, name, url: URL.createObjectURL(blob) });
+    render();
+  }
+  list.addEventListener("click", (e) => {
+    const b = e.target.closest(".x"); if (!b) return;
+    URL.revokeObjectURL(clips[b.dataset.i].url); clips.splice(+b.dataset.i, 1); render();
+  });
+  input.addEventListener("change", () => { for (const f of input.files) add(f, f.name); input.value = ""; });
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); for (const f of e.dataTransfer.files) add(f, f.name); });
+
+  recBtn.addEventListener("click", async () => {
+    if (recorder) { recorder.stop(); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { alert("Microphone access was refused or is unavailable."); return; }
+    const chunks = [];
+    recorder = new MediaRecorder(stream);
+    const started = Date.now();
+    const tick = setInterval(() => { recBtn.textContent = `■ Stop (${Math.round((Date.now() - started) / 1000)}s)`; }, 250);
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.onstop = () => {
+      clearInterval(tick); stream.getTracks().forEach((t) => t.stop());
+      const type = recorder.mimeType || "audio/webm";
+      const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+      add(new Blob(chunks, { type }), `recording-${new Date().toTimeString().slice(0, 8).replace(/:/g, "")}.${ext}`);
+      recorder = null; recBtn.textContent = "● Record"; recBtn.classList.remove("on");
+    };
+    recorder.start(); recBtn.classList.add("on");
+  });
+  return { get: () => clips, clear: () => { clips.forEach((c) => URL.revokeObjectURL(c.url)); clips = []; render(); } };
+}
+
+/* ---------------------------------------------------------- identify -- */
+let idMode = "match";
+const idPicker = clipPicker($("#id-source"), { max: 1, onChange: (c) => ($("#id-run").disabled = !c.length) });
+
+$("#id-mode").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  idMode = b.dataset.mode;
+  for (const x of $("#id-mode").children) x.setAttribute("aria-pressed", x === b);
+  $("#verify-wrap").hidden = idMode !== "verify";
+  if (idMode === "verify") fillPersonSelect();
+});
+
+async function fillPersonSelect() {
+  const sel = $("#verify-person");
+  const persons = (await api("/persons")).data;
+  sel.innerHTML = persons.map((p) => `<option value="${esc(p.person_id)}">${esc(p.name)} · ${esc(p.person_id)}</option>`).join("");
+}
+
+function bars(items, threshold) {
+  return `<div class="bars">${items.map((m) => {
+    const w = Math.max(0, Math.min(1, m.similarity)) * 100;
+    return `<div class="bar"><span title="${esc(m.person_id)}">${esc(m.name || m.person_id)}</span>
+      <span class="track"><span class="fill ${m.similarity >= threshold ? "hit" : ""}" style="width:${w}%"></span>
+      <span class="thr" style="left:${threshold * 100}%" title="threshold"></span></span>
+      <span class="pct">${pct(m.similarity)}</span></div>`;
+  }).join("")}</div>`;
+}
+
+function renderMatch(r) {
+  const label = { match: "Match", ambiguous: "Ambiguous", no_match: "No match" }[r.status];
+  const who = r.status === "match"
+    ? `${esc(r.person.name)}<small>${esc(r.person.person_id)}${r.person.crime_type ? " · " + esc(r.person.crime_type) : ""}</small>`
+    : r.status === "ambiguous" ? `Two speakers fit closely<small>Review the candidates below; no identity is asserted.</small>`
+    : `Unknown speaker<small>No one enrolled scores above ${pct(r.threshold)}.</small>`;
+  const confirm = r.status === "match"
+    ? `<div class="row" style="margin-top:14px"><button class="btn" id="confirm-btn">Add this clip to ${esc(r.person.name)}'s record</button></div><div id="confirm-result"></div>` : "";
+  return `<div class="panel">
+    <div class="verdict"><span class="badge ${r.status}">${label}</span><div class="who">${who}</div></div>
+    <div class="facts">
+      <div><b>${pct(r.similarity)}</b>best score</div>
+      <div><b>${pct(r.threshold)}</b>threshold</div>
+      <div><b>${r.margin == null ? "–" : pct(r.margin)}</b>lead over next</div>
+      <div><b>${r.speech_seconds.toFixed(1)} s</b>speech used</div>
+    </div>
+    <h2>Closest speakers</h2>${bars(r.ranked_matches, r.threshold)}${confirm}</div>`;
+}
+
+$("#id-run").addEventListener("click", async () => {
+  const [clip] = idPicker.get(); if (!clip) return;
+  const out = $("#id-result");
+  const fd = new FormData();
+  fd.append("file", clip.blob, clip.name);
+  let path = "/match";
+  if (idMode === "search") path = "/search";
+  if (idMode === "verify") { path = "/match/person"; fd.append("person_id", $("#verify-person").value); }
+  out.innerHTML = busy("Analysing the voice… the first request also loads the model.");
+  $("#id-run").disabled = true;
+  try {
+    const r = await api(path, { method: "POST", body: fd });
+    if (idMode === "match") {
+      out.innerHTML = renderMatch(r);
+      const btn = $("#confirm-btn");
+      if (btn) btn.addEventListener("click", async () => {
+        const f = new FormData(); f.append("file", clip.blob, clip.name); f.append("person_id", r.person.person_id);
+        btn.disabled = true;
+        try { const c = await api("/match/confirm", { method: "POST", body: f }); $("#confirm-result").innerHTML = msg("ok", c.message); loadStats(); }
+        catch (err) { $("#confirm-result").innerHTML = msg("err", err.message); btn.disabled = false; }
+      });
+    } else if (idMode === "search") {
+      out.innerHTML = r.results.length
+        ? `<div class="panel"><h2>Candidates above ${pct(r.threshold)}</h2>${bars(r.results, r.threshold)}
+           <p class="muted" style="font-size:13px;margin:12px 0 0">Candidates for review, not an identification.</p></div>`
+        : msg("info", r.message);
+    } else {
+      out.innerHTML = `<div class="panel"><div class="verdict"><span class="badge ${r.matched ? "match" : "no_match"}">${r.matched ? "Same person" : "Not a match"}</span>
+        <div class="who">${esc(r.name)}<small>${esc(r.person_id)}</small></div></div>
+        <div class="facts"><div><b>${pct(r.similarity)}</b>score</div><div><b>${pct(r.threshold)}</b>threshold</div>
+        <div><b>${r.speech_seconds != null ? r.speech_seconds.toFixed(1) + " s" : "–"}</b>speech used</div></div></div>`;
+    }
+  } catch (err) { out.innerHTML = msg("err", err.message); }
+  finally { $("#id-run").disabled = !idPicker.get().length; }
+});
+
+/* ------------------------------------------------------------ enroll -- */
+const enrollPicker = clipPicker($("#enroll-source"), { max: 5, onChange: (c) => ($("#enroll-run").disabled = !c.length) });
+$("#enroll-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target, out = $("#enroll-result");
+  const fd = new FormData();
+  for (const [k, v] of new FormData(form)) if (v !== "") fd.append(k, v);
+  for (const c of enrollPicker.get()) fd.append("clips", c.blob, c.name);
+  out.innerHTML = busy("Checking and storing the clips…");
+  $("#enroll-run").disabled = true;
+  try {
+    const r = await api("/enroll", { method: "POST", body: fd });
+    out.innerHTML = msg("ok", `${r.message} Person ID: ${r.person_id}.`);
+    form.reset(); enrollPicker.clear(); loadStats();
+  } catch (err) { out.innerHTML = msg("err", err.message); }
+  finally { $("#enroll-run").disabled = !enrollPicker.get().length; }
+});
+
+/* ---------------------------------------------------------- speakers -- */
+let speakers = [];
+async function loadSpeakers() {
+  try { speakers = (await api("/persons")).data; renderSpeakers(); }
+  catch (err) { $("#sp-rows").innerHTML = `<tr><td colspan="3">${esc(err.message)}</td></tr>`; }
+}
+function renderSpeakers() {
+  const q = $("#sp-filter").value.trim().toLowerCase();
+  const rows = speakers.filter((p) => !q || p.name.toLowerCase().includes(q) || p.person_id.toLowerCase().includes(q));
+  $("#sp-rows").innerHTML = rows.length
+    ? rows.map((p) => `<tr class="pick" data-id="${esc(p.person_id)}" tabindex="0"><td>${esc(p.name)}</td><td class="muted">${esc(p.person_id)}</td>
+        <td class="num">${p.clip_count}${p.embedding_count > p.clip_count ? ` <span class="muted" title="imported without audio">+${p.embedding_count - p.clip_count}</span>` : ""}</td></tr>`).join("")
+    : `<tr><td colspan="3" class="muted">No speakers${q ? " match" : " enrolled yet"}.</td></tr>`;
+}
+$("#sp-filter").addEventListener("input", renderSpeakers);
+$("#sp-rows").addEventListener("click", (e) => { const tr = e.target.closest("tr.pick"); if (tr) openSpeaker(tr.dataset.id); });
+$("#sp-rows").addEventListener("keydown", (e) => { const tr = e.target.closest("tr.pick"); if (tr && e.key === "Enter") openSpeaker(tr.dataset.id); });
+
+const FIELDS = [["dob", "Date of birth"], ["gender", "Gender"], ["father_name", "Father's name"], ["status", "Status"], ["crime_type", "Crime type"],
+  ["crime_details", "Crime details"], ["police_station", "Police station"], ["jail_name", "Jail"], ["sentence", "Sentence"]];
+
+async function openSpeaker(id) {
+  const box = $("#sp-detail");
+  box.innerHTML = busy("Loading…");
+  try {
+    const { person: p, match_history: logs } = (await api(`/persons/${encodeURIComponent(id)}`)).data;
+    const facts = FIELDS.filter(([k]) => p[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(p[k])}</dd>`).join("");
+    const imported = p.embedding_count - p.clips.length;
+    box.innerHTML = `
+      <div class="who" style="margin-bottom:2px">${esc(p.name)}</div>
+      <div class="muted" style="font-size:13px;margin-bottom:14px">${esc(p.person_id)} · enrolled ${when(p.created_at)}</div>
+      ${facts ? `<dl>${facts}</dl>` : ""}
+      <h2>Stored clips (${p.clips.length})</h2>
+      <ul class="clips">${p.clips.map((c) => `<li><span class="name" title="${esc(c.filename)}">${esc(c.filename || "clip " + c.clip_id)}
+        <span class="muted"> · ${c.speech_seconds.toFixed(1)} s speech${c.source === "confirm" ? " · added later" : ""}</span></span>
+        <audio controls preload="none" src="/${esc(c.url)}"></audio></li>`).join("") || `<li class="muted">No audio stored.</li>`}</ul>
+      ${imported > 0 ? `<p class="muted" style="font-size:13px">${imported} embedding(s) imported from the old JSON profiles, without audio.</p>` : ""}
+      <h2 style="margin-top:16px">Add clips</h2>
+      <p class="muted" style="font-size:13px;margin:-6px 0 10px">Each clip is checked against this person's voice, then stored in the database with its embedding.</p>
+      <div id="sp-add"></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="sp-add-run" disabled>Add to ${esc(p.name)}</button></div>
+      <div id="sp-add-msg"></div>
+      <h2 style="margin-top:16px">Lookups (${logs.length})</h2>
+      ${logs.length ? `<table><tbody>${logs.slice(0, 8).map((l) => `<tr><td>${when(l.timestamp)}</td><td>${esc(l.status)}</td><td class="num">${pct(l.similarity)}</td></tr>`).join("")}</tbody></table>` : `<p class="muted" style="margin:0">None yet.</p>`}
+      <div class="row" style="margin-top:18px"><button class="btn danger" id="sp-delete">Delete speaker</button></div>
+      <div id="sp-msg"></div>`;
+    const addPicker = clipPicker($("#sp-add"), { max: 5, onChange: (c) => ($("#sp-add-run").disabled = !c.length) });
+    $("#sp-add-run").addEventListener("click", async () => {
+      const clips = addPicker.get(), out = $("#sp-add-msg");
+      $("#sp-add-run").disabled = true;
+      const results = [];
+      for (const [i, c] of clips.entries()) {
+        out.innerHTML = busy(`Checking clip ${i + 1} of ${clips.length}…`);
+        const fd = new FormData(); fd.append("file", c.blob, c.name); fd.append("person_id", p.person_id);
+        try { const r = await api("/match/confirm", { method: "POST", body: fd }); results.push(msg("ok", `${c.name}: stored (${pct(r.similarity)} match).`)); }
+        catch (err) { results.push(msg("err", `${c.name}: ${err.message}`)); }
+      }
+      loadStats(); loadSpeakers();
+      await openSpeaker(p.person_id);
+      $("#sp-add-msg").innerHTML = results.join("");
+    });
+    $("#sp-delete").addEventListener("click", async () => {
+      if (!confirm(`Delete ${p.name} (${p.person_id}) and all ${p.clips.length} stored clips? This cannot be undone.`)) return;
+      try { await api(`/persons/${encodeURIComponent(p.person_id)}`, { method: "DELETE" }); box.innerHTML = msg("ok", `Deleted ${p.person_id}.`); loadSpeakers(); loadStats(); }
+      catch (err) { $("#sp-msg").innerHTML = msg("err", err.message); }
+    });
+  } catch (err) { box.innerHTML = msg("err", err.message); }
+}
+
+/* ----------------------------------------------------------- compare -- */
+const cmpPicker = clipPicker($("#cmp-source"), { max: 10, onChange: (c) => ($("#cmp-run").disabled = c.length < 2) });
+$("#cmp-run").addEventListener("click", async () => {
+  const clips = cmpPicker.get(), out = $("#cmp-result");
+  const fd = new FormData();
+  for (const c of clips) fd.append("files", c.blob, c.name);
+  out.innerHTML = busy("Comparing…");
+  $("#cmp-run").disabled = true;
+  try {
+    const r = await api("/compare", { method: "POST", body: fd });
+    const name = Object.fromEntries(r.clips.map((c) => [c.clip_id, c.filename]));
+    out.innerHTML = `<div class="panel"><h2>${esc(r.message)}</h2>
+      <table><thead><tr><th>Clip</th><th>Speaker</th><th class="num">Speech</th></tr></thead><tbody>
+      ${r.clips.map((c) => `<tr><td>${esc(c.filename)}</td><td>${esc(c.speaker.replace("_", " "))}</td><td class="num">${c.speech_seconds.toFixed(1)} s</td></tr>`).join("")}
+      </tbody></table></div>
+      <div class="panel"><h2>Pairs</h2><table><thead><tr><th>Clip A</th><th>Clip B</th><th class="num">Similarity</th><th>Same speaker</th></tr></thead><tbody>
+      ${r.comparisons.sort((a, b) => b.similarity - a.similarity).map((c) => `<tr><td>${esc(name[c.clip_a])}</td><td>${esc(name[c.clip_b])}</td>
+        <td class="num">${pct(c.similarity)}</td><td class="${c.same_speaker ? "yes" : "no"}">${c.same_speaker ? "Yes" : "No"}</td></tr>`).join("")}
+      </tbody></table></div>`;
+  } catch (err) { out.innerHTML = msg("err", err.message); }
+  finally { $("#cmp-run").disabled = cmpPicker.get().length < 2; }
+});
+
+/* ---------------------------------------------------------- activity -- */
+async function loadActivity() {
+  const d = await loadStats();
+  if (d) $("#act-facts").innerHTML = `<div><b>${d.total_matches}</b>lookups</div><div><b>${d.matched_count}</b>matched</div>
+    <div><b>${d.total_clips}</b>stored clips</div><div><b>${(d.audio_bytes / 1048576).toFixed(1)} MB</b>audio in database</div>`;
+  try {
+    const logs = (await api("/match/logs?limit=30")).data;
+    $("#act-rows").innerHTML = logs.length ? logs.map((l) => `<tr><td>${when(l.timestamp)}</td><td>${esc(l.status)}</td>
+      <td>${l.person_id ? `${esc(l.name || "")} <span class="muted">${esc(l.person_id)}</span>` : `<span class="muted">–</span>`}</td>
+      <td class="num">${pct(l.similarity)}</td><td class="${l.matched ? "yes" : "no"}">${l.matched ? "Matched" : "No"}</td></tr>`).join("")
+      : `<tr><td colspan="5" class="muted">No lookups yet.</td></tr>`;
+  } catch (err) { $("#act-rows").innerHTML = `<tr><td colspan="5">${esc(err.message)}</td></tr>`; }
+  try {
+    const r = await api("/admin/integrity");
+    const issues = [];
+    if (r.persons_without_embeddings.length) issues.push(`Unsearchable (no embedding): ${r.persons_without_embeddings.join(", ")}`);
+    if (r.clips_without_embedding.length) issues.push(`Clips missing an embedding: ${r.clips_without_embedding.join(", ")}`);
+    $("#act-integrity").innerHTML = (r.consistent ? msg("ok", "All records complete.") : issues.map((i) => msg("err", i)).join(""))
+      + (r.embeddings_without_clip ? `<p style="font-size:13px;margin:10px 0 0">${r.embeddings_without_clip} embedding(s) imported without audio.</p>` : "");
+  } catch (err) { $("#act-integrity").innerHTML = msg("err", err.message); }
+}
+
+/* -------------------------------------------------------------- init -- */
+loadStats();
+let start = "identify";
+try { const saved = localStorage.getItem("vr-page"); if (pages.includes(saved)) start = saved; } catch {}
+show(start);
+</script>
+</body>
+</html>
