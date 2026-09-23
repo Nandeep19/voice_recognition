@@ -14,7 +14,7 @@ MODEL_DIR = BASE_DIR / "models"
 # postgresql://vr_app:password@localhost:5432/vr_dopams
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-SPEAKER_MODEL = os.getenv("SPEAKER_MODEL", "speechbrain/spkrec-ecapa-voxceleb")
+# The models themselves are pinned in src/model_files.py, not configured here.
 # ECAPA-TDNN (VoxCeleb) produces 192-d embeddings; fixes the VECTOR column size.
 EMBEDDING_DIM = 192
 
@@ -36,6 +36,12 @@ CONFIRM_THRESHOLD = float(os.getenv("CONFIRM_THRESHOLD", 0.75))
 # Every clip of one enrollment must sound like the others at least this much,
 # so a wrong file cannot slip into someone's record.
 ENROLL_CONSISTENCY_THRESHOLD = float(os.getenv("ENROLL_CONSISTENCY_THRESHOLD", 0.53))
+# Stored clips (enroll, add clip) get a warning when a part of the clip, of at
+# least MULTI_VOICE_MIN_SEGMENT_S, sounds unlike the rest. Measured on real
+# clips: genuine single-speaker clips >= 0.497; two-speaker mixes 0.27-0.52.
+# The ranges overlap, so this warns and never refuses; it caught 4 of 6 mixes.
+MULTI_VOICE_THRESHOLD = float(os.getenv("MULTI_VOICE_THRESHOLD", 0.45))
+MULTI_VOICE_MIN_SEGMENT_S = float(os.getenv("MULTI_VOICE_MIN_SEGMENT_S", 2.0))
 # Sharpness of the confidence curve around the threshold.
 SIGMOID_STEEPNESS = float(os.getenv("SIGMOID_STEEPNESS", 15.0))
 

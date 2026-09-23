@@ -10,13 +10,18 @@ from api.match_api import router as match_router
 from api.media_api import router as media_router
 from src.config import FRONTEND_PATH
 from src.embed import model_loaded
-from src.voice_service import initialize_system
+from src.model_files import EMBEDDING_MODEL_ID
+from src.voice_service import initialize_system, load_models
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # All state lives in PostgreSQL, so any number of workers can run.
     initialize_system()
+    # Load the models before accepting requests: the first request would
+    # otherwise wait for them, and a missing or altered model file should stop
+    # the server at startup, not fail requests later.
+    load_models()
     yield
 
 
@@ -43,7 +48,7 @@ async def root() -> RedirectResponse:
 
 @app.get("/health")
 async def health_check() -> dict:
-    return {"status": "ok", "speaker_model_loaded": model_loaded()}
+    return {"status": "ok", "speaker_model_loaded": model_loaded(), "model": EMBEDDING_MODEL_ID}
 
 
 if __name__ == "__main__":

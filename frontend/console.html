@@ -95,6 +95,7 @@
   .msg.ok { background: var(--ok-weak); color: var(--ok); }
   .msg.err { background: var(--bad-weak); color: var(--bad); }
   .msg.info { background: var(--accent-weak); color: var(--accent); }
+  .msg.warn { background: var(--warn-weak); color: var(--warn); }
 
   .verdict { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
   .badge { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 4px 9px; border-radius: 6px; }
@@ -277,6 +278,7 @@ const pct = (v) => (v == null ? "–" : `${(v * 100).toFixed(1)}%`);
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "–");
 const secs = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : s >= 60 ? `${(s / 60).toFixed(1)} min` : `${Math.round(s)} s`);
 const msg = (kind, text) => `<div class="msg ${kind}">${esc(text)}</div>`;
+const warns = (list) => (list || []).map((w) => `<div class="msg warn">⚠ ${esc(w)}</div>`).join("");
 const busy = (text) => `<div class="msg info"><span class="spin"></span> ${esc(text)}</div>`;
 
 async function api(path, options = {}) {
@@ -439,7 +441,7 @@ $("#id-run").addEventListener("click", async () => {
       if (btn) btn.addEventListener("click", async () => {
         const f = new FormData(); f.append("file", clip.blob, clip.name); f.append("person_id", r.person.person_id);
         btn.disabled = true;
-        try { const c = await api("/match/confirm", { method: "POST", body: f }); $("#confirm-result").innerHTML = msg("ok", c.message); loadStats(); }
+        try { const c = await api("/match/confirm", { method: "POST", body: f }); $("#confirm-result").innerHTML = msg("ok", c.message) + warns(c.warnings); loadStats(); }
         catch (err) { $("#confirm-result").innerHTML = msg("err", err.message); btn.disabled = false; }
       });
     } else if (idMode === "search") {
@@ -469,7 +471,7 @@ $("#enroll-form").addEventListener("submit", async (e) => {
   $("#enroll-run").disabled = true;
   try {
     const r = await api("/enroll", { method: "POST", body: fd });
-    out.innerHTML = msg("ok", `${r.message} Person ID: ${r.person_id}.`);
+    out.innerHTML = msg("ok", `${r.message} Person ID: ${r.person_id}.`) + warns(r.warnings);
     form.reset(); enrollPicker.clear(); loadStats();
   } catch (err) { out.innerHTML = msg("err", err.message); }
   finally { $("#enroll-run").disabled = !enrollPicker.get().length; }
@@ -529,7 +531,7 @@ async function openSpeaker(id) {
       for (const [i, c] of clips.entries()) {
         out.innerHTML = busy(`Checking clip ${i + 1} of ${clips.length}…`);
         const fd = new FormData(); fd.append("file", c.blob, c.name); fd.append("person_id", p.person_id);
-        try { const r = await api("/match/confirm", { method: "POST", body: fd }); results.push(msg("ok", `${c.name}: stored (${pct(r.similarity)} match).`)); }
+        try { const r = await api("/match/confirm", { method: "POST", body: fd }); results.push(msg("ok", `${c.name}: stored (${pct(r.similarity)} match).`) + warns(r.warnings)); }
         catch (err) { results.push(msg("err", `${c.name}: ${err.message}`)); }
       }
       loadStats(); loadSpeakers();
@@ -584,6 +586,8 @@ async function loadActivity() {
     const issues = [];
     if (r.persons_without_embeddings.length) issues.push(`Unsearchable (no embedding): ${r.persons_without_embeddings.join(", ")}`);
     if (r.clips_without_embedding.length) issues.push(`Clips missing an embedding: ${r.clips_without_embedding.join(", ")}`);
+    const stale = Object.entries(r.embeddings_from_other_models || {});
+    if (stale.length) issues.push(`Embeddings from an older model, ignored by search until re-embedded (python -m scripts.reembed): ${stale.map(([m, n]) => `${n} from ${m}`).join(", ")}`);
     $("#act-integrity").innerHTML = (r.consistent ? msg("ok", "All records complete.") : issues.map((i) => msg("err", i)).join(""))
       + (r.embeddings_without_clip ? `<p style="font-size:13px;margin:10px 0 0">${r.embeddings_without_clip} embedding(s) imported without audio.</p>` : "");
   } catch (err) { $("#act-integrity").innerHTML = msg("err", err.message); }

@@ -23,6 +23,7 @@ from pathlib import Path
 
 from src import database as db
 from src.config import BASE_DIR, PERSON_ID_PATTERN
+from src.model_files import EMBEDDING_MODEL_ID
 from src.voice_service import initialize_system
 
 _PERSON_ID_RE = re.compile(PERSON_ID_PATTERN)
@@ -73,7 +74,11 @@ def main() -> int:
             session.add(person)
             session.flush()
             for vector in vectors:
-                session.add(db.VoiceEmbedding(person_id=person_id, clip_id=None, embedding=vector))
+                # The old JSON pipeline used the same pinned ECAPA model: re-embedding
+                # its source recordings reproduced these vectors exactly.
+                session.add(
+                    db.VoiceEmbedding(person_id=person_id, clip_id=None, embedding=vector, model=EMBEDDING_MODEL_ID)
+                )
         imported += 1
 
     verb = "would import" if args.dry_run else "imported"

@@ -1,17 +1,15 @@
 """Tests for scoring module — sigmoid confidence and matching logic."""
 
-import math
-
 import numpy as np
 
-from app.scoring import (
+from src.scoring import (
+    cluster,
+    compute_pairwise_results,
     cosine_similarity,
     cosine_similarity_matrix,
+    rank_speakers,
     sigmoid_confidence,
-    match_against_profiles,
-    compute_pairwise_results,
 )
-from app.storage import SpeakerProfile
 
 
 class TestCosineSimilarity:
@@ -76,58 +74,41 @@ class TestSigmoidConfidence:
         assert conf_high > conf_low
 
 
-class TestMatchAgainstProfiles:
-    def _make_profile(
-        self,
-        speaker_id: str,
-        centroid: list[float],
-        enrollments: list[list[float]] | None = None,
-    ) -> SpeakerProfile:
-        return SpeakerProfile(
-            speaker_id=speaker_id,
-            name=speaker_id,
-            created_at="2026-01-01T00:00:00Z",
-            updated_at="2026-01-01T00:00:00Z",
-            embeddings=[{"embedding": embedding} for embedding in (enrollments or [])],
-            centroid=centroid,
-            enrollment_count=1,
-        )
+def _row(person_id: str, query: np.ndarray, enrollments: list[list[float]]) -> dict:
+    """What database.speaker_similarities returns for one person."""
+    vectors = np.array(enrollments, dtype=np.float64)
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    centroid = vectors.mean(axis=0)
+    return {
+        "person_id": person_id,
+        "centroid_similarity": float(query @ centroid / np.linalg.norm(centroid)),
+        "similarities": [float(query @ v) for v in vectors],
+    }
 
+
+class TestRankSpeakers:
     def test_best_match_is_first(self) -> None:
         query = np.array([1.0, 0.0, 0.0])
-        profiles = [
-            self._make_profile("alice", [0.0, 1.0, 0.0]),
-            self._make_profile("bob", [0.9, 0.1, 0.0]),
-        ]
-        # Normalize bob's centroid
-        profiles[1].centroid = profiles[1].centroid / np.linalg.norm(profiles[1].centroid)
+        rows = [_row("alice", query, [[0.0, 1.0, 0.0]]), _row("bob", query, [[0.9, 0.1, 0.0]])]
 
-        matches = match_against_profiles(query, profiles, threshold=0.75)
-        assert matches[0]["speaker_id"] == "bob"
+        matches = rank_speakers(rows, threshold=0.75)
+        assert matches[0]["person_id"] == "bob"
         assert matches[0]["similarity"] > matches[1]["similarity"]
         assert matches[0]["rank"] == 1
         assert matches[1]["rank"] == 2
 
-    def test_empty_profiles(self) -> None:
-        query = np.array([1.0, 0.0])
-        matches = match_against_profiles(query, [], threshold=0.75)
-        assert matches == []
+    def test_empty_rows(self) -> None:
+        assert rank_speakers([], threshold=0.75) == []
 
     def test_top_n_limits_results(self) -> None:
         query = np.array([1.0, 0.0])
-        profiles = [self._make_profile(f"spk_{i}", [1.0, 0.0]) for i in range(10)]
-        matches = match_against_profiles(query, profiles, threshold=0.75, top_n=3)
-        assert len(matches) == 3
+        rows = [_row(f"spk_{i}", query, [[1.0, 0.0]]) for i in range(10)]
+        assert len(rank_speakers(rows, threshold=0.75, top_n=3)) == 3
 
     def test_combines_centroid_and_individual_enrollments(self) -> None:
-        query = np.array([1.0, 0.0])
-        profile = self._make_profile(
-            "alice",
-            [0.8, 0.6],
-            enrollments=[[1.0, 0.0], [0.6, 0.8], [0.8, 0.6]],
-        )
+        row = {"person_id": "alice", "centroid_similarity": 0.8, "similarities": [1.0, 0.6, 0.8]}
 
-        match = match_against_profiles(query, [profile], threshold=0.75)[0]
+        match = rank_speakers([row], threshold=0.75)[0]
 
         assert match["centroid_similarity"] == 0.8
         assert match["enrollment_top_similarity"] == 1.0
@@ -135,19 +116,14 @@ class TestMatchAgainstProfiles:
         assert match["similarity"] == 0.84
         assert match["match_percentage"] == 84.0
         assert match["confidence_percentage"] == round(match["confidence"] * 100, 2)
+        assert match["above_threshold"] is True
 
     def test_fewer_than_three_enrollments_drop_the_top3_term(self) -> None:
         """Two samples spread around the query: the centroid matches it better
         than either sample does. The score must not be dragged far below that
         centroid by averaging in the weaker sample."""
         query = np.array([1.0, 0.0, 0.0])
-        profile = self._make_profile(
-            "alice",
-            [1.0, 0.0, 0.0],
-            enrollments=[[0.8, 0.6, 0.0], [0.8, -0.6, 0.0]],
-        )
-
-        match = match_against_profiles(query, [profile], threshold=0.75)[0]
+        match = rank_speakers([_row("alice", query, [[0.8, 0.6, 0.0], [0.8, -0.6, 0.0]])], threshold=0.75)[0]
 
         assert match["centroid_similarity"] == 1.0
         assert match["enrollment_top_similarity"] == 0.8
@@ -156,12 +132,14 @@ class TestMatchAgainstProfiles:
 
     def test_single_enrollment_scores_as_its_own_centroid(self) -> None:
         query = np.array([1.0, 0.0])
-        profile = self._make_profile("alice", [1.0, 0.0], enrollments=[[1.0, 0.0]])
-
-        match = match_against_profiles(query, [profile], threshold=0.75)[0]
+        match = rank_speakers([_row("alice", query, [[1.0, 0.0]])], threshold=0.75)[0]
 
         assert match["similarity"] == 1.0
         assert match["match_percentage"] == 100.0
+
+    def test_below_threshold_is_flagged(self) -> None:
+        row = {"person_id": "alice", "centroid_similarity": 0.3, "similarities": [0.3]}
+        assert rank_speakers([row], threshold=0.75)[0]["above_threshold"] is False
 
 
 class TestPairwiseResults:
@@ -179,3 +157,18 @@ class TestPairwiseResults:
         _, comparisons = compute_pairwise_results(embeddings, clip_ids, threshold=0.75)
         assert comparisons[0]["same_speaker"] is True
         assert comparisons[0]["similarity"] == 1.0
+
+
+class TestCluster:
+    def test_groups_similar_embeddings(self) -> None:
+        similarities = np.array([[1.0, 0.90, 0.20], [0.90, 1.0, 0.25], [0.20, 0.25, 1.0]])
+        labels = cluster(similarities, threshold=0.75)
+        assert labels[0] == labels[1]
+        assert labels[0] != labels[2]
+
+    def test_single_clip(self) -> None:
+        assert list(cluster(np.array([[1.0]]), threshold=0.75)) == [0]
+
+    def test_all_different(self) -> None:
+        similarities = np.array([[1.0, 0.10, 0.05], [0.10, 1.0, 0.15], [0.05, 0.15, 1.0]])
+        assert len(set(cluster(similarities, threshold=0.75))) == 3

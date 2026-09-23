@@ -49,9 +49,9 @@ async def enroll(
         return {
             "success": True,
             "message": result.get("message", "Enrollment completed successfully."),
-            "person_id": result.get("person_id"),
             "data": result,
             "errors": [],
+            **result,
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

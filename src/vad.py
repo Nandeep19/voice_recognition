@@ -7,9 +7,9 @@ soft speech, background music, HVAC rumble, and varying SNR conditions.
 The model is recurrent: it carries hidden state from one 32 ms frame to the
 next. One shared instance used by two requests at once interleaves that state
 and, in practice, crashes the process natively. Each thread therefore gets its
-own instance (~2 MB); loading is serialised because ``torch.hub.load`` is not
-thread-safe. The weights are fetched once (~2 MB) and then read from the local
-torch hub cache.
+own instance (~2 MB), loaded from the pinned, checksum-verified file
+models/silero_vad.jit (see src/model_files.py). Nothing is downloaded and no
+downloaded code is run.
 """
 
 from __future__ import annotations
@@ -19,26 +19,32 @@ import threading
 import numpy as np
 import torch
 
-_load_lock = threading.Lock()
+from src.model_files import VAD_FILE, verify_vad_model
+
+_verify_lock = threading.Lock()
+_verified = False
 _local = threading.local()
 
 
 def _get_vad():
     """This thread's Silero VAD model, loaded on first use in the thread."""
+    global _verified
     model = getattr(_local, "model", None)
     if model is None:
-        with _load_lock:
-            # Pinned: silero-vad master imports onnxruntime at module load,
-            # which this project does not depend on (it uses the JIT model).
-            model, _utils = torch.hub.load(
-                repo_or_dir="snakers4/silero-vad:v5.1.2",
-                model="silero_vad",
-                force_reload=False,
-                trust_repo=True,
-                verbose=False,
-            )
+        if not _verified:
+            with _verify_lock:
+                if not _verified:
+                    verify_vad_model()
+                    _verified = True
+        model = torch.jit.load(str(VAD_FILE), map_location="cpu")
+        model.eval()
         _local.model = model
     return model
+
+
+def warm_up() -> None:
+    """Verify and load the model now rather than on the first request."""
+    _get_vad()
 
 
 def detect_speech_segments(

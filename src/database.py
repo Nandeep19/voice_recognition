@@ -10,6 +10,11 @@ L2-normalised, so this equals their inner product. A speaker's centroid is
 ``avg(embedding)``; cosine distance ignores its length, so it needs no
 re-normalising.
 
+Every embedding records the model that produced it (``model``). Only
+embeddings from the current model (src/model_files.py) are searched:
+embeddings from different models live in different vector spaces, and
+comparing them yields meaningless scores without any error.
+
 Search is an exact scan (no ANN index), so the true nearest speaker is never
 missed.
 """
@@ -42,6 +47,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from src.config import DATABASE_URL, EMBEDDING_DIM
+from src.model_files import EMBEDDING_MODEL_ID
 
 PERSON_FIELDS = (
     "name",
@@ -115,6 +121,8 @@ class VoiceEmbedding(Base):
         BigInteger, ForeignKey("voice_clips.id", ondelete="CASCADE"), unique=True
     )
     embedding: Mapped[Any] = mapped_column(Vector(EMBEDDING_DIM))
+    # The model that produced the embedding; see src/model_files.py.
+    model: Mapped[str] = mapped_column(String(128), default=EMBEDDING_MODEL_ID, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -185,6 +193,22 @@ def init_db() -> None:
                 "PostgreSQL server and make sure the DATABASE_URL user may create it."
             ) from exc
     Base.metadata.create_all(engine)
+    _migrate(engine)
+
+
+def _migrate(engine: Engine) -> None:
+    """Bring databases created before ``voice_embeddings.model`` existed up to date.
+
+    Until that column was added, only one model had ever been used, the one
+    now pinned as EMBEDDING_MODEL_ID (its files were checked against the
+    pinned checksums, and re-embedding stored clips reproduced the stored
+    embeddings exactly), so existing rows are tagged with it.
+    """
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE voice_embeddings ADD COLUMN IF NOT EXISTS model VARCHAR(128)"))
+        conn.execute(text("UPDATE voice_embeddings SET model = :model WHERE model IS NULL"), {"model": EMBEDDING_MODEL_ID})
+        conn.execute(text("ALTER TABLE voice_embeddings ALTER COLUMN model SET NOT NULL"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_voice_embeddings_model ON voice_embeddings (model)"))
 
 
 # ---------------------------------------------------------------- helpers --
@@ -414,13 +438,19 @@ def replace_clip_embedding(clip_id: int, embedding: Sequence[float]) -> None:
             session.add(VoiceEmbedding(person_id=clip.person_id, clip_id=clip_id, embedding=normalise(embedding)))
         else:
             row.embedding = normalise(embedding)
+            row.model = EMBEDDING_MODEL_ID
 
 
 # ------------------------------------------------------------- similarity --
 
 def count_embeddings() -> int:
+    """Searchable embeddings: those from the current model."""
     with session_scope() as session:
-        return int(session.scalar(select(func.count()).select_from(VoiceEmbedding)))
+        return int(
+            session.scalar(
+                select(func.count()).select_from(VoiceEmbedding).where(VoiceEmbedding.model == EMBEDDING_MODEL_ID)
+            )
+        )
 
 
 def speaker_similarities(
@@ -439,7 +469,7 @@ def speaker_similarities(
         VoiceEmbedding.person_id,
         (1 - centroid.cosine_distance(query)).label("centroid_similarity"),
         func.array_agg(similarity).label("similarities"),
-    ).group_by(VoiceEmbedding.person_id)
+    ).where(VoiceEmbedding.model == EMBEDDING_MODEL_ID).group_by(VoiceEmbedding.person_id)
     if person_id is not None:
         stmt = stmt.where(VoiceEmbedding.person_id == person_id)
     with session_scope() as session:
@@ -517,12 +547,25 @@ def get_storage_stats() -> Dict[str, Any]:
 
 def integrity_report() -> Dict[str, Any]:
     """Foreign keys make orphans impossible; what can still be wrong is a
-    person with no embedding (unsearchable), or a clip whose embedding is
-    missing. Embeddings without a clip come from the JSON import and are
-    reported, not flagged: they work but cannot be re-embedded."""
+    person with no current-model embedding (unsearchable), a clip whose
+    embedding is missing, or embeddings from another model (ignored by search
+    until re-embedded). Embeddings without a clip come from the JSON import
+    and are reported, not flagged: they work but cannot be re-embedded."""
     with session_scope() as session:
         person_ids = set(session.scalars(select(Person.person_id)))
-        with_embeddings = set(session.scalars(select(VoiceEmbedding.person_id).distinct()))
+        with_embeddings = set(
+            session.scalars(
+                select(VoiceEmbedding.person_id).where(VoiceEmbedding.model == EMBEDDING_MODEL_ID).distinct()
+            )
+        )
+        other_models = {
+            model: int(n)
+            for model, n in session.execute(
+                select(VoiceEmbedding.model, func.count())
+                .where(VoiceEmbedding.model != EMBEDDING_MODEL_ID)
+                .group_by(VoiceEmbedding.model)
+            )
+        }
         clips_without_embedding = list(
             session.scalars(
                 select(VoiceClip.id)
@@ -545,8 +588,10 @@ def integrity_report() -> Dict[str, Any]:
     without_embeddings = sorted(person_ids - with_embeddings)
     return {
         "counts": counts,
+        "model": EMBEDDING_MODEL_ID,
         "persons_without_embeddings": without_embeddings,
         "clips_without_embedding": clips_without_embedding,
+        "embeddings_from_other_models": other_models,
         "embeddings_without_clip": embeddings_without_clip,
-        "consistent": not (without_embeddings or clips_without_embedding),
+        "consistent": not (without_embeddings or clips_without_embedding or other_models),
     }

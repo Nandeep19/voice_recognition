@@ -26,6 +26,8 @@ from src.config import (
     MAX_ENROLL_CLIPS,
     MAX_UPLOAD_MB,
     MIN_SPEECH_MS,
+    MULTI_VOICE_MIN_SEGMENT_S,
+    MULTI_VOICE_THRESHOLD,
     PERSON_ID_PATTERN,
     PERSON_MATCH_THRESHOLD,
     SEARCH_THRESHOLD,
@@ -66,13 +68,13 @@ def _decode_clip(data: bytes, filename: str) -> np.ndarray:
     return audio
 
 
-def _embed_audio(audio: np.ndarray, min_speech_ms: int) -> Tuple[np.ndarray, float]:
-    """(embedding, seconds of speech) for a decoded clip.
+def _embed_audio(audio: np.ndarray, min_speech_ms: int) -> Tuple[np.ndarray, float, list, list]:
+    """(embedding, seconds of speech, speech segments, their (start, end) times).
 
     A clip with too little speech still produces an embedding, but it is
     noise; refusing it is safer than reporting a confident-looking score.
     """
-    speech, _timestamps, segments = extract_speech(
+    speech, timestamps, segments = extract_speech(
         audio,
         TARGET_SAMPLE_RATE,
         threshold=VAD_THRESHOLD,
@@ -87,19 +89,76 @@ def _embed_audio(audio: np.ndarray, min_speech_ms: int) -> Tuple[np.ndarray, flo
         embedding = embed_segments(segments, TARGET_SAMPLE_RATE, VAD_MIN_SEGMENT_MS)
     else:
         embedding = embed(speech, TARGET_SAMPLE_RATE)
-    return embedding, round(len(speech) / TARGET_SAMPLE_RATE, 3)
+    return embedding, round(len(speech) / TARGET_SAMPLE_RATE, 3), segments, timestamps
 
 
-def _analyse_clip(data: bytes, filename: str, min_speech_ms: int) -> Dict[str, object]:
-    """Decode, gate and embed one clip. ``wav_bytes`` is the stored form."""
+def _pieces_for_voice_check(segments: list, timestamps: list) -> List[Tuple[np.ndarray, float, float]]:
+    """Speech pieces of at least MULTI_VOICE_MIN_SEGMENT_S, with their times.
+
+    Mirrors embed._merge_short_segments, the method the threshold was measured
+    with: a short segment joins the next long one; short ones left at the end
+    join the last piece.
+    """
+    min_samples = int(TARGET_SAMPLE_RATE * MULTI_VOICE_MIN_SEGMENT_S)
+    pieces: List[Tuple[np.ndarray, float, float]] = []
+    buffer: list = []
+    for segment, (start, end) in zip(segments, timestamps):
+        if len(segment) >= min_samples:
+            if buffer:
+                pieces.append((np.concatenate([b[0] for b in buffer] + [segment]), buffer[0][1], end))
+                buffer = []
+            else:
+                pieces.append((segment, start, end))
+        else:
+            buffer.append((segment, start, end))
+    if buffer and pieces:
+        audio, start, _ = pieces[-1]
+        pieces[-1] = (np.concatenate([audio] + [b[0] for b in buffer]), start, buffer[-1][2])
+    return [p for p in pieces if len(p[0]) >= min_samples]
+
+
+def _multi_voice_warning(segments: list, timestamps: list) -> Optional[str]:
+    """A warning when part of a clip sounds unlike the rest of it.
+
+    Each piece is compared with the duration-weighted average of the others.
+    This is a hint, not proof: on real recordings it catches most two-person
+    clips, but a similar-sounding second voice can pass unnoticed.
+    """
+    pieces = _pieces_for_voice_check(segments, timestamps)
+    if len(pieces) < 2:
+        return None
+    vectors = np.vstack([db.normalise(embed(audio, TARGET_SAMPLE_RATE)) for audio, _, _ in pieces])
+    weights = np.sqrt([len(audio) for audio, _, _ in pieces])
+    worst = None
+    for index in range(len(pieces)):
+        mean = (np.delete(vectors, index, axis=0) * np.delete(weights, index)[:, None]).sum(axis=0)
+        similarity = float(vectors[index] @ (mean / np.linalg.norm(mean)))
+        if worst is None or similarity < worst[0]:
+            worst = (similarity, pieces[index][1], pieces[index][2])
+    similarity, start, end = worst
+    if similarity >= MULTI_VOICE_THRESHOLD:
+        return None
+    return (
+        f"The part at {start:.1f}-{end:.1f}s sounds like a different voice ({similarity:.0%} similar to the "
+        f"rest). If the recording has more than one person, trim it to the one speaker and re-add it."
+    )
+
+
+def _analyse_clip(data: bytes, filename: str, min_speech_ms: int, check_voices: bool = False) -> Dict[str, object]:
+    """Decode, gate and embed one clip. ``wav_bytes`` is the stored form.
+
+    ``check_voices`` adds a multi-voice warning, for clips that will be stored.
+    """
     audio = _decode_clip(data, filename)
-    embedding, speech_seconds = _embed_audio(audio, min_speech_ms)
+    embedding, speech_seconds, segments, timestamps = _embed_audio(audio, min_speech_ms)
+    warning = _multi_voice_warning(segments, timestamps) if check_voices else None
     return {
         "filename": filename,
         "embedding": embedding,
         "wav_bytes": encode_wav(audio),
         "duration_seconds": round(len(audio) / TARGET_SAMPLE_RATE, 3),
         "speech_seconds": speech_seconds,
+        "warnings": [warning] if warning else [],
     }
 
 
@@ -111,6 +170,14 @@ def reembed_wav(wav_bytes: bytes) -> np.ndarray:
 
 def initialize_system() -> None:
     db.init_db()
+
+
+def load_models() -> None:
+    """Verify and load both models. Fails loudly on a missing or altered file."""
+    from src import embed as speaker_model, vad
+
+    vad.warm_up()
+    speaker_model.warm_up()
 
 
 def _ranked(embedding: np.ndarray, threshold: float, person_id: Optional[str] = None) -> List[Dict[str, object]]:
@@ -189,7 +256,7 @@ def enroll_person(
     for index, (filename, data) in enumerate(uploads, start=1):
         filename = _safe_filename(filename)
         try:
-            clips.append(_analyse_clip(data, filename, ENROLLMENT_MIN_SPEECH_MS))
+            clips.append(_analyse_clip(data, filename, ENROLLMENT_MIN_SPEECH_MS, check_voices=True))
         except ValueError as exc:
             raise ValueError(f"Clip {index} ({filename}): {exc}") from exc
 
@@ -216,11 +283,17 @@ def enroll_person(
         raise ValueError(f"Person ID {person_id} already exists.")
 
     speech = sum(clip["speech_seconds"] for clip in clips)
+    warnings = [
+        f"Clip {index} ({clip['filename']}): {warning}"
+        for index, clip in enumerate(clips, start=1)
+        for warning in clip["warnings"]
+    ]
     return {
         "success": True,
         "person_id": person_id,
         "clip_ids": clip_ids,
         "speech_seconds": round(speech, 1),
+        "warnings": warnings,
         "message": f"Enrolled {len(clips)} clip(s), {speech:.1f}s of speech.",
     }
 
@@ -351,7 +424,7 @@ def confirm_match(person_id: str, upload: Upload) -> Dict[str, object]:
 
     filename, data = upload
     # Stored permanently, so held to the enrollment speech minimum.
-    clip = _analyse_clip(data, _safe_filename(filename), ENROLLMENT_MIN_SPEECH_MS)
+    clip = _analyse_clip(data, _safe_filename(filename), ENROLLMENT_MIN_SPEECH_MS, check_voices=True)
     ranked = _ranked(clip["embedding"], CONFIRM_THRESHOLD, person_id)
     best = ranked[0]["similarity"] if ranked else 0.0
     if best < CONFIRM_THRESHOLD:
@@ -366,6 +439,7 @@ def confirm_match(person_id: str, upload: Upload) -> Dict[str, object]:
         "person_id": person_id,
         "clip_id": clip_id,
         "similarity": best,
+        "warnings": clip["warnings"],
         "message": "Clip and embedding saved.",
     }
 

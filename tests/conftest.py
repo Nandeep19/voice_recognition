@@ -58,7 +58,7 @@ def fake_embedding(data: bytes) -> np.ndarray:
     return vec.astype(np.float32)
 
 
-def fake_analyse(data: bytes, filename: str, min_speech_ms: int) -> dict:
+def fake_analyse(data: bytes, filename: str, min_speech_ms: int, check_voices: bool = False) -> dict:
     from src.audio import encode_wav
 
     return {
@@ -67,6 +67,7 @@ def fake_analyse(data: bytes, filename: str, min_speech_ms: int) -> dict:
         "wav_bytes": encode_wav(np.zeros(1600, dtype=np.float32)),
         "duration_seconds": 4.0,
         "speech_seconds": 3.5,
+        "warnings": [],
     }
 
 
@@ -77,6 +78,7 @@ def client():
     import app as app_module
 
     app_module.initialize_system = lambda: None
+    app_module.load_models = lambda: None
     with TestClient(app_module.app) as c:
         yield c
 

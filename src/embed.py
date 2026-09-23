@@ -3,7 +3,8 @@
 Provides single-segment and multi-segment embedding with length-weighted
 averaging for robust speaker representations.
 
-The model (~80 MB) is downloaded on first use and loaded once per process.
+The model is loaded once per process, only from the pinned, checksum-verified
+files in models/speaker (see src/model_files.py); nothing is downloaded.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from threading import Lock
 
 import numpy as np
 
-from src.config import MODEL_DIR, SPEAKER_MODEL
+from src.model_files import SPEAKER_DIR, verify_speaker_model
 
 _speaker_model = None
 _speaker_lock = Lock()
@@ -21,6 +22,12 @@ _speaker_lock = Lock()
 
 def model_loaded() -> bool:
     return _speaker_model is not None
+
+
+def warm_up() -> None:
+    """Load the model and run one embedding now, so the first request is not
+    the one that pays for it."""
+    embed(np.zeros(16_000, dtype=np.float32))
 
 
 def _get_speaker_model():
@@ -31,10 +38,13 @@ def _get_speaker_model():
                 from speechbrain.inference.speaker import EncoderClassifier
                 from speechbrain.utils.fetching import LocalStrategy
 
+                verify_speaker_model()
+                # A local directory as source: SpeechBrain reads the files in
+                # place and never contacts Hugging Face.
                 _speaker_model = EncoderClassifier.from_hparams(
-                    source=SPEAKER_MODEL,
-                    savedir=str(MODEL_DIR / "speaker"),
-                    local_strategy=LocalStrategy.COPY,
+                    source=str(SPEAKER_DIR),
+                    savedir=str(SPEAKER_DIR),
+                    local_strategy=LocalStrategy.NO_LINK,
                 )
     return _speaker_model
 
