@@ -111,7 +111,7 @@ Copy-Item .env.example .env
 
 ```env
 DATABASE_URL=postgresql://vr_app:PASSWORD@localhost:5432/vr_dopams
-VOICE_THRESHOLD=0.75
+VOICE_THRESHOLD=0.55
 ```
 
 URL-encode special characters in the password. Tables are created on first
@@ -244,9 +244,10 @@ Measured on 8 real recordings of 3 speakers (raw clip-to-clip similarity):
 | Different speakers | 0.23 – 0.48 |
 
 Combined scores for known speakers were 0.69–0.90; for the unenrolled
-speaker, 0.47. `ENROLL_CONSISTENCY_THRESHOLD=0.53` sits in the raw gap. The
-`.env.example` defaults (0.75) are stricter than this data needs; the working
-`.env` uses 0.55. That is 3 speakers only: re-measure as the gallery grows,
+speaker, 0.47. `ENROLL_CONSISTENCY_THRESHOLD=0.53` sits in the raw gap, and
+the defaults (`VOICE_THRESHOLD` 0.55, `DUPLICATE_THRESHOLD` 0.60) sit between
+the unenrolled speaker and the weakest known one. That is 3 speakers only:
+the margin is narrow, so re-measure as the gallery grows,
 with recordings not used for enrollment. `/compare` shows raw pairwise
 similarities for any set of clips.
 

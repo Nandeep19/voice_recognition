@@ -19,20 +19,21 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 EMBEDDING_DIM = 192
 
 # All scores are the combined per-speaker score from src/scoring.py, not the
-# raw similarity to one clip. Same-speaker pairs typically score 0.80-0.95 and
-# different speakers 0.10-0.55; re-check with your own recordings.
-VOICE_THRESHOLD = float(os.getenv("VOICE_THRESHOLD", 0.75))
-PERSON_MATCH_THRESHOLD = float(os.getenv("PERSON_MATCH_THRESHOLD", 0.75))
-SEARCH_THRESHOLD = float(os.getenv("SEARCH_THRESHOLD", 0.60))
+# raw similarity to one clip. Measured on real recordings: known speakers
+# 0.69-0.90, an unenrolled speaker 0.47 (see README, "Choosing thresholds").
+# Re-measure as the gallery grows.
+VOICE_THRESHOLD = float(os.getenv("VOICE_THRESHOLD", 0.55))
+PERSON_MATCH_THRESHOLD = float(os.getenv("PERSON_MATCH_THRESHOLD", 0.55))
+SEARCH_THRESHOLD = float(os.getenv("SEARCH_THRESHOLD", 0.45))
 
 # 1:N identify only returns a match when the best speaker beats the next-best
 # *different* speaker by at least this much; otherwise the result is ambiguous.
 MATCH_MARGIN = float(os.getenv("MATCH_MARGIN", 0.05))
 # Enrollment is refused when a clip already scores this high against someone
 # else, unless explicitly overridden.
-DUPLICATE_THRESHOLD = float(os.getenv("DUPLICATE_THRESHOLD", 0.80))
+DUPLICATE_THRESHOLD = float(os.getenv("DUPLICATE_THRESHOLD", 0.60))
 # "Add clip to speaker" requires the clip to match that speaker this well.
-CONFIRM_THRESHOLD = float(os.getenv("CONFIRM_THRESHOLD", 0.75))
+CONFIRM_THRESHOLD = float(os.getenv("CONFIRM_THRESHOLD", 0.55))
 # Every clip of one enrollment must sound like the others at least this much,
 # so a wrong file cannot slip into someone's record.
 ENROLL_CONSISTENCY_THRESHOLD = float(os.getenv("ENROLL_CONSISTENCY_THRESHOLD", 0.53))
